@@ -178,5 +178,64 @@ export function runAIAndControlsTests(): number {
     passed++;
   }
 
+  // 7. Verified AI reaction intervals matching exact user specification
+  {
+    assert.equal(AI_DIFFICULTY_PROFILES.beginner.reactionInterval, 0.70, 'Beginner reaction is 700 ms');
+    assert.equal(AI_DIFFICULTY_PROFILES.easy.reactionInterval, 0.50, 'Easy reaction is 500 ms');
+    assert.equal(AI_DIFFICULTY_PROFILES.medium.reactionInterval, 0.35, 'Medium reaction is 350 ms');
+    assert.equal(AI_DIFFICULTY_PROFILES.hard.reactionInterval, 0.20, 'Hard reaction is 200 ms');
+    assert.equal(AI_DIFFICULTY_PROFILES.expert.reactionInterval, 0.10, 'Expert reaction is 100 ms');
+    passed++;
+  }
+
+  // 8. Verified AI speed and acceleration scaling (~45% speed, ~50% acceleration)
+  {
+    assert.ok(AI_DIFFICULTY_PROFILES.beginner.maxSpeedFactor <= 0.18, 'Beginner speed <= 0.18');
+    assert.ok(AI_DIFFICULTY_PROFILES.easy.maxSpeedFactor <= 0.25, 'Easy speed <= 0.25');
+    assert.ok(AI_DIFFICULTY_PROFILES.medium.maxSpeedFactor <= 0.38, 'Medium speed <= 0.38');
+    assert.ok(AI_DIFFICULTY_PROFILES.hard.maxSpeedFactor <= 0.52, 'Hard speed <= 0.52');
+
+    assert.ok(AI_DIFFICULTY_PROFILES.beginner.steeringDamp <= 4.0, 'Beginner damp <= 4.0');
+    assert.ok(AI_DIFFICULTY_PROFILES.easy.steeringDamp <= 5.0, 'Easy damp <= 5.0');
+    assert.ok(AI_DIFFICULTY_PROFILES.medium.steeringDamp <= 7.0, 'Medium damp <= 7.0');
+    passed++;
+  }
+
+  // 9. AI Behavior State Machine & Dynamic Fair Game Balancing
+  {
+    const physics = new AirHockeyPhysics();
+    const ai = new HockeyAI();
+    ai.setDifficulty('easy');
+
+    // Puck in player half -> state should be defense
+    physics.puck.x = 0;
+    physics.puck.z = 0.50;
+    ai.update(physics, 1 / 60);
+    assert.equal(ai.getState(), 'defense', 'AI enters defense state when puck is in player half');
+
+    // Puck in neutral area -> state transitions to balanced
+    physics.puck.x = 0;
+    physics.puck.z = -0.10;
+    // Step past reaction interval (500 ms)
+    for (let i = 0; i < 35; i++) {
+      ai.update(physics, 1 / 60);
+    }
+    const stateAfterNeutral = ai.getState();
+    assert.ok(
+      stateAfterNeutral === 'balanced' || stateAfterNeutral === 'attack',
+      'AI transitions between balanced and attack when puck enters AI half'
+    );
+
+    // Dynamic balancing: when AI leads, reaction interval increases and defense error widens
+    assert.equal(ai.getDynamicReactionMultiplier(), 1.0);
+    ai.updateDynamicBalancing(1, 3); // AI leads by 2 goals
+    assert.ok(
+      ai.getDynamicReactionMultiplier() > 1.20,
+      'Dynamic balancing adds reaction delay when AI leads'
+    );
+    passed++;
+  }
+
   return passed;
 }
+

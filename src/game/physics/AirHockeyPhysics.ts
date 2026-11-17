@@ -130,6 +130,7 @@ export class AirHockeyPhysics {
   public puckTimeScale = 1.0;
   public strikeBoost1 = 1.0;
   public strikeBoost2 = 1.0;
+  public aiStrikePower = 0.55;
   public goalShield1 = false;
   public goalShield2 = false;
   public topSpeedKmh = 0;
@@ -156,6 +157,7 @@ export class AirHockeyPhysics {
     this.puckTimeScale = 1.0;
     this.strikeBoost1 = 1.0;
     this.strikeBoost2 = 1.0;
+    this.aiStrikePower = 0.55;
     this.goalShield1 = false;
     this.goalShield2 = false;
     this.bonusPuck.active = false;
@@ -249,6 +251,7 @@ export class AirHockeyPhysics {
     this.lastWallSoundTime = -1;
     this.lastPaddleSoundTime = { 1: -1, 2: -1 };
     this.goalTriggered = false;
+    this.aiStrikePower = 0.55;
   }
 
   public launchPracticePuck(speedMultiplier: number): void {
@@ -531,11 +534,12 @@ export class AirHockeyPhysics {
       }
     }
 
-    if (Math.abs(puck.x) < GOAL_HALF_WIDTH) {
-      if (puck.z < -(HALF_LENGTH + puck.radius * 0.35)) {
+    // Clean, immediate goal line detection across the goal opening
+    if (!this.goalTriggered && Math.abs(puck.x) <= GOAL_HALF_WIDTH) {
+      if (puck.z <= -HALF_LENGTH) {
         this.goalTriggered = true;
         this.events.onGoal?.(1, kmh);
-      } else if (puck.z > HALF_LENGTH + puck.radius * 0.35) {
+      } else if (puck.z >= HALF_LENGTH) {
         this.goalTriggered = true;
         this.events.onGoal?.(2, kmh);
       }
@@ -698,14 +702,25 @@ export class AirHockeyPhysics {
 
     if (relVelAlongNormal < 0) {
       const boost = player === 1 ? this.strikeBoost1 : this.strikeBoost2;
+      const power = player === 2 ? this.aiStrikePower : 1.0;
       const e = PADDLE_RESTITUTION * (boost > 1 ? 1.12 : 1.0);
       const invM1 = 1 / puck.mass;
       const invM2 = 1 / pad.mass;
       const j = (-(1 + e) * relVelAlongNormal) / (invM1 + invM2);
 
-      const impulse = j * invM1;
+      const impulse = j * invM1 * power;
       puck.vx += impulse * nx;
       puck.vz += impulse * nz;
+
+      if (player === 2) {
+        const aiLaunchSpd = Math.hypot(puck.vx, puck.vz);
+        const maxAiLaunch = 3.65 * Math.max(0.85, this.strikeBoost2);
+        if (aiLaunchSpd > maxAiLaunch) {
+          const ratio = maxAiLaunch / aiLaunchSpd;
+          puck.vx *= ratio;
+          puck.vz *= ratio;
+        }
+      }
 
       const tx = -nz;
       const tz = nx;
@@ -811,6 +826,10 @@ export class AirHockeyPhysics {
 
     const postRadius = 0.012;
     for (const post of GOAL_POSTS) {
+      // Only collide with posts if the puck is on the playing field side of the goal line
+      if (post.z < 0 && puck.z <= -HALF_LENGTH) continue;
+      if (post.z > 0 && puck.z >= HALF_LENGTH) continue;
+
       const dx = puck.x - post.x;
       const dz = puck.z - post.z;
       const minD = r + postRadius;

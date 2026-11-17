@@ -376,6 +376,65 @@ export function runPhysicsTests(): number {
     passed++;
   }
 
+  // 13. Goal line crossing detection triggers without rejection by posts from behind
+  {
+    let scored = false;
+    const physics = new AirHockeyPhysics({
+      onGoal: (s) => {
+        if (s === 1) scored = true;
+      },
+    });
+    physics.resetPositions('center');
+    // Angled shot entering near right post of top goal: x = 0.16 (inside GOAL_HALF_WIDTH = 0.21)
+    physics.puck.x = 0.16;
+    physics.puck.z = -HALF_LENGTH + 0.02;
+    physics.puck.vx = 0.3;
+    physics.puck.vz = -2.5;
+
+    for (let i = 0; i < 8; i++) {
+      physics.step(1 / 60);
+    }
+    assert.equal(scored, true, 'Angled shot crossing goal line awards point to P1 immediately');
+    passed++;
+  }
+
+  // 14. AI strike power scaling reduces P2 launch impulse to ~55% while P1 retains 100%
+  {
+    // P1 (Human) test: full power strike
+    const phys1 = new AirHockeyPhysics();
+    phys1.resetPositions('center');
+    phys1.puck.x = 0;
+    phys1.puck.z = 0.35;
+    phys1.p1.x = 0;
+    phys1.p1.z = 0.58;
+    phys1.setPaddleTarget(1, 0, 0.20);
+    for (let i = 0; i < 4; i++) {
+      phys1.step(1 / 60);
+    }
+    const p1PuckSpeed = Math.hypot(phys1.puck.vx, phys1.puck.vz);
+
+    // P2 (AI) test with same strike distance
+    const phys2 = new AirHockeyPhysics();
+    phys2.resetPositions('center');
+    phys2.puck.x = 0;
+    phys2.puck.z = -0.35;
+    phys2.p2.x = 0;
+    phys2.p2.z = -0.58;
+    phys2.setPaddleTarget(2, 0, -0.20);
+    for (let i = 0; i < 4; i++) {
+      phys2.step(1 / 60);
+    }
+    const p2PuckSpeed = Math.hypot(phys2.puck.vx, phys2.puck.vz);
+
+    assert.ok(p1PuckSpeed > 1.5, 'Player 1 strike retains full power');
+    assert.ok(
+      p2PuckSpeed < p1PuckSpeed * 0.70,
+      'Player 2 (AI) strike power is reduced to ~55% of full strike impulse'
+    );
+    passed++;
+  }
+
   return passed;
 }
+
 

@@ -836,6 +836,11 @@ export class AirHockeyEngine {
       } else {
         this.input.updateKeyboard(dt);
         if (this.isAIEnabledMode()) {
+          this.ai.updateDynamicBalancing(
+            this.score1,
+            this.score2,
+            this.matchElapsedSeconds
+          );
           this.ai.update(this.physics, dt);
         }
         this.updatePowerUps(dt);

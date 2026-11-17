@@ -33,7 +33,7 @@ export function getDefaultReducedMotion(): boolean {
 
 export const DEFAULT_MATCH_CONFIG: MatchConfig = {
   mode: 'vs_ai',
-  difficulty: 'medium',
+  difficulty: 'easy',
   gameplaySpeed: 'normal',
   durationSeconds: 180,
   customDurationMinutes: 4,
