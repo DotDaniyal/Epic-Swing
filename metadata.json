@@ -1,0 +1,6 @@
+{
+  "name": "Apex Rink — 3D Air Hockey",
+  "description": "Realistic 3D air hockey game with simultaneous multi-touch local multiplayer, adaptive AI opponents, fixed-timestep physics, and offline PWA support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

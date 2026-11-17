@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#05070C" />
+      <stop offset="100%" stop-color="#0C1933" />
+    </linearGradient>
+    <linearGradient id="cyanArc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#38F2FF" />
+      <stop offset="100%" stop-color="#0284C7" />
+    </linearGradient>
+    <linearGradient id="orangeArc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FF9F43" />
+      <stop offset="100%" stop-color="#FF3B2F" />
+    </linearGradient>
+    <linearGradient id="chrome" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F8FAFC" />
+      <stop offset="50%" stop-color="#CBD5E1" />
+      <stop offset="100%" stop-color="#64748B" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg)" />
+  <rect x="28" y="28" width="456" height="456" rx="88" fill="none" stroke="#1E293B" stroke-width="8" />
+  <!-- Dynamic Velocity Arcs -->
+  <path d="M 104 340 A 178 178 0 0 1 256 78" fill="none" stroke="url(#cyanArc)" stroke-width="24" stroke-linecap="round" />
+  <path d="M 408 172 A 178 178 0 0 1 256 434" fill="none" stroke="url(#orangeArc)" stroke-width="24" stroke-linecap="round" />
+  <!-- Impact Ring -->
+  <circle cx="256" cy="256" r="118" fill="#0A1324" stroke="url(#chrome)" stroke-width="14" />
+  <!-- Striker Core -->
+  <circle cx="256" cy="256" r="66" fill="#0F172A" stroke="#00D8F6" stroke-width="10" />
+  <circle cx="256" cy="256" r="28" fill="#FF6B1A" />
+  <!-- Speed Slash -->
+  <path d="M 140 256 L 204 256 M 308 256 L 372 256" stroke="#F8FAFC" stroke-width="10" stroke-linecap="round" />
+</svg>

@@ -1,0 +1,79 @@
+import React, { useEffect, useRef } from 'react';
+import gsap from 'gsap';
+import { EpicSwingLogo } from '@/components/common/EpicSwingLogo';
+
+interface LoadingScreenProps {
+  ready: boolean;
+  onComplete: () => void;
+  reducedMotion: boolean;
+}
+
+export const LoadingScreen: React.FC<LoadingScreenProps> = ({
+  ready,
+  onComplete,
+  reducedMotion,
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!barRef.current) return;
+    if (reducedMotion) {
+      barRef.current.style.transform = 'scaleX(1)';
+      const t = window.setTimeout(onComplete, 220);
+      return () => window.clearTimeout(t);
+    }
+
+    const tl = gsap.timeline();
+    tl.fromTo(
+      barRef.current,
+      { scaleX: 0.08 },
+      { scaleX: 1, duration: 0.7, ease: 'power2.out' }
+    );
+
+    return () => {
+      tl.kill();
+    };
+  }, [reducedMotion, onComplete]);
+
+  useEffect(() => {
+    if (!ready || !containerRef.current) return;
+    const delay = reducedMotion ? 160 : 720;
+    const timer = window.setTimeout(() => {
+      if (!containerRef.current || reducedMotion) {
+        onComplete();
+        return;
+      }
+      gsap.to(containerRef.current, {
+        opacity: 0,
+        duration: 0.32,
+        ease: 'power2.out',
+        onComplete,
+      });
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [ready, reducedMotion, onComplete]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#05070C] px-6"
+    >
+      <div className="flex flex-col items-center">
+        <EpicSwingLogo variant="hero" />
+
+        <div className="mt-7 h-1.5 w-52 overflow-hidden rounded-sm bg-slate-800">
+          <div
+            ref={barRef}
+            className="h-full w-full origin-left bg-gradient-to-r from-cyan-400 to-orange-500"
+            style={{ transform: 'scaleX(0.1)' }}
+          />
+        </div>
+        <p className="mt-2.5 text-[11px] font-semibold tracking-widest text-slate-400 uppercase">
+          Loading 3D Arena
+        </p>
+      </div>
+    </div>
+  );
+};
