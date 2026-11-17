@@ -16,6 +16,7 @@ import { PWAInstallButton } from '@/components/common/PWAInstallButton';
 import type {
   CameraViewMode,
   QualityPreset,
+  TableOrientationMode,
   UserPreferences,
 } from '@/types/game';
 
@@ -287,6 +288,37 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   }`}
                 >
                   {cam.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold text-slate-300">
+              Table Orientation
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {(
+                [
+                  { id: 'auto', label: 'Auto Fit' },
+                  { id: 'vertical', label: 'Vertical' },
+                  { id: 'landscape', label: 'Landscape' },
+                ] as Array<{ id: TableOrientationMode; label: string }>
+              ).map((ori) => (
+                <button
+                  key={ori.id}
+                  type="button"
+                  onClick={() => {
+                    onButtonClick();
+                    update({ tableOrientation: ori.id });
+                  }}
+                  className={`min-h-[40px] rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    prefs.tableOrientation === ori.id
+                      ? 'bg-cyan-400 text-slate-950'
+                      : 'border border-white/10 bg-[#080F1E] text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {ori.label}
                 </button>
               ))}
             </div>

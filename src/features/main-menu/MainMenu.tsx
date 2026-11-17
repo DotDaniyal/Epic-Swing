@@ -5,6 +5,7 @@ import {
   Bot,
   CalendarCheck,
   Coins,
+  Crown,
   Maximize2,
   Minimize2,
   Palette,
@@ -13,10 +14,13 @@ import {
   ShoppingBag,
   SlidersHorizontal,
   Target,
+  Timer,
+  Trophy,
   User,
   Users,
   Volume2,
   VolumeX,
+  Zap,
 } from 'lucide-react';
 import { animatePanelEnter } from '@/animations/timelines';
 import { EpicSwingLogo } from '@/components/common/EpicSwingLogo';
@@ -73,6 +77,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       ? '2P Local'
       : config.mode === 'vs_ai'
       ? `vs AI (${config.difficulty})`
+      : config.mode === 'time_challenge'
+      ? 'Time Rush'
+      : config.mode === 'best_of_three'
+      ? 'Best of 3'
+      : config.mode === 'tournament'
+      ? 'Tournament'
       : 'Practice';
 
   const durationLabel = formatDurationLabel(
@@ -232,8 +242,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({
               </h1>
               <p className="mt-1 truncate text-xs text-slate-300">
                 {profiles.p1.name} vs{' '}
-                {config.mode === 'vs_ai'
+                {config.mode === 'vs_ai' ||
+                config.mode === 'time_challenge' ||
+                config.mode === 'best_of_three'
                   ? 'Arena AI'
+                  : config.mode === 'tournament'
+                  ? 'Championship Bracket'
                   : config.mode === 'practice'
                   ? 'Practice Drill'
                   : profiles.p2.name}{' '}
@@ -243,13 +257,22 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 <span className="font-mono-tabular text-slate-100">
                   {durationLabel}
                 </span>
-                {config.mode !== 'practice' && (
+                {config.mode !== 'practice' && config.mode !== 'time_challenge' && (
                   <>
                     <span className="mx-1 text-slate-500">·</span>
                     <span className="font-semibold text-amber-300">
                       {config.winningScore > 0
                         ? `First to ${config.winningScore}`
                         : 'Timed'}
+                    </span>
+                  </>
+                )}
+                {config.powerUpsEnabled && config.mode !== 'practice' && (
+                  <>
+                    <span className="mx-1 text-slate-500">·</span>
+                    <span className="inline-flex items-center gap-0.5 font-semibold text-yellow-300">
+                      <Zap className="w-3 h-3" />
+                      Power-Ups
                     </span>
                   </>
                 )}
@@ -278,7 +301,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
               onButtonClick();
               onStartQuickMatch('two_player');
             }}
-            className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-cyan-400/35 bg-cyan-500/12 px-3 text-xs sm:text-sm font-bold text-cyan-200 hover:bg-cyan-500/22 cursor-pointer"
+            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-cyan-400/35 bg-cyan-500/12 px-2.5 text-xs sm:text-sm font-bold text-cyan-200 hover:bg-cyan-500/22 cursor-pointer"
           >
             <Users className="w-4 h-4 text-cyan-300 shrink-0" />
             <span className="truncate">2P Local</span>
@@ -290,7 +313,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
               onButtonClick();
               onStartQuickMatch('vs_ai');
             }}
-            className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-orange-500/40 bg-orange-500/14 px-3 text-xs sm:text-sm font-bold text-orange-200 hover:bg-orange-500/24 cursor-pointer"
+            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-orange-500/40 bg-orange-500/14 px-2.5 text-xs sm:text-sm font-bold text-orange-200 hover:bg-orange-500/24 cursor-pointer"
           >
             <Bot className="w-4 h-4 text-orange-400 shrink-0" />
             <span className="truncate">Play vs AI</span>
@@ -302,10 +325,46 @@ export const MainMenu: React.FC<MainMenuProps> = ({
               onButtonClick();
               onStartQuickMatch('practice');
             }}
-            className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#0C1424] px-3 text-xs sm:text-sm font-bold text-white hover:border-cyan-400/50 cursor-pointer"
+            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-[#0C1424] px-2.5 text-xs sm:text-sm font-bold text-white hover:border-cyan-400/50 cursor-pointer"
           >
             <Target className="w-4 h-4 text-cyan-400 shrink-0" />
             <span className="truncate">Practice</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onButtonClick();
+              onStartQuickMatch('time_challenge');
+            }}
+            className="flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-2.5 text-xs font-bold text-emerald-200 hover:bg-emerald-500/20 cursor-pointer"
+          >
+            <Timer className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="truncate">Time Rush</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onButtonClick();
+              onStartQuickMatch('best_of_three');
+            }}
+            className="flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl border border-purple-400/30 bg-purple-500/10 px-2.5 text-xs font-bold text-purple-200 hover:bg-purple-500/20 cursor-pointer"
+          >
+            <Trophy className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+            <span className="truncate">Best of 3</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onButtonClick();
+              onStartQuickMatch('tournament');
+            }}
+            className="flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl border border-amber-400/35 bg-amber-500/10 px-2.5 text-xs font-bold text-amber-200 hover:bg-amber-500/20 cursor-pointer"
+          >
+            <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span className="truncate">Tournament</span>
           </button>
         </div>
 

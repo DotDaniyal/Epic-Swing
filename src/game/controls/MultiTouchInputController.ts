@@ -12,6 +12,7 @@ export class MultiTouchInputController {
   private p2PointerId: number | null = null;
   private mode: GameMode = 'vs_ai';
   private active = false;
+  private landscapeView = false;
   private touchSensitivity = 1.0;
 
   private canvasRect: DOMRect | null = null;
@@ -50,6 +51,10 @@ export class MultiTouchInputController {
       : 1.0;
   }
 
+  public setLandscapeView(enabled: boolean): void {
+    this.landscapeView = enabled;
+  }
+
   public setMode(mode: GameMode): void {
     this.mode = mode;
     this.clearPointers();
@@ -72,47 +77,51 @@ export class MultiTouchInputController {
     this.p2PointerId = null;
   }
 
+  private applyDirectionalNudge(player: 1 | 2, screenRight: number, screenDown: number, dt: number): void {
+    const keySpeed = 3.1;
+    const len = Math.hypot(screenRight, screenDown);
+    if (len <= 0) return;
+    const nr = (screenRight / len) * keySpeed * dt;
+    const nd = (screenDown / len) * keySpeed * dt;
+    if (this.landscapeView) {
+      // Camera up = (-1, 0, 0), P1 left (+Z) / P2 right (-Z):
+      // screenRight -> -Z, screenDown -> +X
+      this.physics.nudgePaddleTarget(player, nd, -nr);
+    } else {
+      this.physics.nudgePaddleTarget(player, nr, nd);
+    }
+  }
+
   public updateKeyboard(dt: number): void {
     if (!this.active) return;
-    const keySpeed = 3.1;
 
-    let p1dx = 0;
-    let p1dz = 0;
-    if (this.heldKeys.has('ArrowLeft')) p1dx -= 1;
-    if (this.heldKeys.has('ArrowRight')) p1dx += 1;
-    if (this.heldKeys.has('ArrowUp')) p1dz -= 1;
-    if (this.heldKeys.has('ArrowDown')) p1dz += 1;
+    let p1r = 0;
+    let p1d = 0;
+    if (this.heldKeys.has('ArrowLeft')) p1r -= 1;
+    if (this.heldKeys.has('ArrowRight')) p1r += 1;
+    if (this.heldKeys.has('ArrowUp')) p1d -= 1;
+    if (this.heldKeys.has('ArrowDown')) p1d += 1;
 
     if (this.mode !== 'two_player') {
-      if (this.heldKeys.has('KeyA')) p1dx -= 1;
-      if (this.heldKeys.has('KeyD')) p1dx += 1;
-      if (this.heldKeys.has('KeyW')) p1dz -= 1;
-      if (this.heldKeys.has('KeyS')) p1dz += 1;
+      if (this.heldKeys.has('KeyA')) p1r -= 1;
+      if (this.heldKeys.has('KeyD')) p1r += 1;
+      if (this.heldKeys.has('KeyW')) p1d -= 1;
+      if (this.heldKeys.has('KeyS')) p1d += 1;
     }
 
-    if (p1dx !== 0 || p1dz !== 0) {
-      const len = Math.hypot(p1dx, p1dz);
-      this.physics.nudgePaddleTarget(
-        1,
-        (p1dx / len) * keySpeed * dt,
-        (p1dz / len) * keySpeed * dt
-      );
+    if (p1r !== 0 || p1d !== 0) {
+      this.applyDirectionalNudge(1, p1r, p1d, dt);
     }
 
     if (this.mode === 'two_player') {
-      let p2dx = 0;
-      let p2dz = 0;
-      if (this.heldKeys.has('KeyA')) p2dx -= 1;
-      if (this.heldKeys.has('KeyD')) p2dx += 1;
-      if (this.heldKeys.has('KeyW')) p2dz -= 1;
-      if (this.heldKeys.has('KeyS')) p2dz += 1;
-      if (p2dx !== 0 || p2dz !== 0) {
-        const len = Math.hypot(p2dx, p2dz);
-        this.physics.nudgePaddleTarget(
-          2,
-          (p2dx / len) * keySpeed * dt,
-          (p2dz / len) * keySpeed * dt
-        );
+      let p2r = 0;
+      let p2d = 0;
+      if (this.heldKeys.has('KeyA')) p2r -= 1;
+      if (this.heldKeys.has('KeyD')) p2r += 1;
+      if (this.heldKeys.has('KeyW')) p2d -= 1;
+      if (this.heldKeys.has('KeyS')) p2d += 1;
+      if (p2r !== 0 || p2d !== 0) {
+        this.applyDirectionalNudge(2, p2r, p2d, dt);
       }
     }
   }
@@ -310,6 +319,8 @@ export class MultiTouchInputController {
       passive: false,
     });
 
+    window.addEventListener('pointerup', this.handlePointerEnd);
+    window.addEventListener('pointercancel', this.handlePointerEnd);
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
     window.addEventListener('blur', this.handleBlur);
@@ -324,6 +335,8 @@ export class MultiTouchInputController {
     this.canvas.removeEventListener('touchstart', this.handleTouchBlock);
     this.canvas.removeEventListener('touchmove', this.handleTouchBlock);
 
+    window.removeEventListener('pointerup', this.handlePointerEnd);
+    window.removeEventListener('pointercancel', this.handlePointerEnd);
     window.removeEventListener('keydown', this.handleKeyDown);
     window.removeEventListener('keyup', this.handleKeyUp);
     window.removeEventListener('blur', this.handleBlur);

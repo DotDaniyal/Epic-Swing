@@ -42,13 +42,18 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   onMainMenu,
   onButtonClick,
 }) => {
+  const isAIMode =
+    config.mode === 'vs_ai' ||
+    config.mode === 'time_challenge' ||
+    config.mode === 'best_of_three' ||
+    config.mode === 'tournament';
+
   const p1Name = profiles.p1.name || config.player1Name;
-  const p2Name =
-    config.mode === 'vs_ai'
-      ? `Arena AI (${config.difficulty.toUpperCase()})`
-      : config.mode === 'practice'
-      ? 'Practice'
-      : profiles.p2.name || config.player2Name;
+  const p2Name = isAIMode
+    ? `Arena AI (${config.difficulty.toUpperCase()})`
+    : config.mode === 'practice'
+    ? 'Practice'
+    : profiles.p2.name || config.player2Name;
 
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/78 p-4">

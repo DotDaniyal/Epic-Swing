@@ -125,6 +125,21 @@ export function processCompletedMatchRewards(
     p2CoinsEarned: p2TotalCoins,
   };
 
+  const isAIMode =
+    record.mode === 'vs_ai' ||
+    record.mode === 'time_challenge' ||
+    record.mode === 'best_of_three' ||
+    record.mode === 'tournament';
+
+  const bestMatchTimeSeconds =
+    record.winner === 'p1' &&
+    typeof record.elapsedSeconds === 'number' &&
+    record.elapsedSeconds > 0
+      ? freshSave.statistics.bestMatchTimeSeconds === null
+        ? record.elapsedSeconds
+        : Math.min(freshSave.statistics.bestMatchTimeSeconds, record.elapsedSeconds)
+      : freshSave.statistics.bestMatchTimeSeconds;
+
   const nextStats: PlayerStatistics = {
     totalMatches: freshSave.statistics.totalMatches + 1,
     p1Wins: freshSave.statistics.p1Wins + (record.winner === 'p1' ? 1 : 0),
@@ -132,10 +147,10 @@ export function processCompletedMatchRewards(
     draws: freshSave.statistics.draws + (record.winner === 'draw' ? 1 : 0),
     aiWins:
       freshSave.statistics.aiWins +
-      (record.mode === 'vs_ai' && record.winner === 'p1' ? 1 : 0),
+      (isAIMode && record.winner === 'p1' ? 1 : 0),
     aiLosses:
       freshSave.statistics.aiLosses +
-      (record.mode === 'vs_ai' && record.winner === 'p2' ? 1 : 0),
+      (isAIMode && record.winner === 'p2' ? 1 : 0),
     totalGoalsScored:
       freshSave.statistics.totalGoalsScored + record.score1 + record.score2,
     bestSingleMatchScore: Math.max(
@@ -143,6 +158,11 @@ export function processCompletedMatchRewards(
       record.score1,
       record.score2
     ),
+    longestWinStreak: Math.max(
+      freshSave.statistics.longestWinStreak,
+      p1.bestWinStreak
+    ),
+    bestMatchTimeSeconds,
     fastestShotKmh: Math.max(
       freshSave.statistics.fastestShotKmh,
       record.topSpeedKmh

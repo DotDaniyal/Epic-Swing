@@ -45,6 +45,7 @@ export interface PhysicsEvents {
     impactSpeed: number
   ) => void;
   onWallHit?: (x: number, z: number, impactSpeed: number) => void;
+  onShieldHit?: (defender: 1 | 2, x: number, z: number) => void;
   onGoal?: (scorer: 1 | 2, puckSpeedKmh: number) => void;
 }
 
@@ -86,6 +87,17 @@ export class AirHockeyPhysics {
     spin: 0,
   };
 
+  public bonusPuck: Body2D & { active: boolean; spin: number } = {
+    active: false,
+    x: 0,
+    z: 0,
+    vx: 0,
+    vz: 0,
+    radius: PUCK_RADIUS,
+    mass: PUCK_MASS,
+    spin: 0,
+  };
+
   public p1: PaddleBody = {
     x: 0,
     z: HALF_LENGTH - 0.34,
@@ -115,6 +127,11 @@ export class AirHockeyPhysics {
   };
 
   public speedScale = 1.0;
+  public puckTimeScale = 1.0;
+  public strikeBoost1 = 1.0;
+  public strikeBoost2 = 1.0;
+  public goalShield1 = false;
+  public goalShield2 = false;
   public topSpeedKmh = 0;
   public totalHits = 0;
 
@@ -135,6 +152,63 @@ export class AirHockeyPhysics {
     this.events = events;
   }
 
+  public resetPowerUpModifiers(): void {
+    this.puckTimeScale = 1.0;
+    this.strikeBoost1 = 1.0;
+    this.strikeBoost2 = 1.0;
+    this.goalShield1 = false;
+    this.goalShield2 = false;
+    this.bonusPuck.active = false;
+    this.bonusPuck.vx = 0;
+    this.bonusPuck.vz = 0;
+    this.setPaddleRadiusScale(1, 1.0);
+    this.setPaddleRadiusScale(2, 1.0);
+  }
+
+  public setPaddleRadiusScale(player: 1 | 2, scale: number): void {
+    const safeScale = Math.max(0.85, Math.min(1.45, Number.isFinite(scale) ? scale : 1.0));
+    const pad = player === 1 ? this.p1 : this.p2;
+    pad.radius = PADDLE_RADIUS * safeScale;
+    if (player === 1) {
+      pad.minZ = pad.radius + CENTER_DIVIDER_MARGIN;
+      pad.maxZ = HALF_LENGTH - pad.radius - 0.01;
+    } else {
+      pad.minZ = -(HALF_LENGTH - pad.radius - 0.01);
+      pad.maxZ = -(pad.radius + CENTER_DIVIDER_MARGIN);
+    }
+    const clamped = this.clampPaddleCoords(pad.x, pad.z, pad);
+    pad.x = clamped.x;
+    pad.z = clamped.z;
+    const clampedTarget = this.clampPaddleCoords(pad.targetX, pad.targetZ, pad);
+    pad.targetX = clampedTarget.x;
+    pad.targetZ = clampedTarget.z;
+  }
+
+  public activateBonusPuck(): void {
+    this.bonusPuck.active = true;
+    this.bonusPuck.x = this.puck.x >= 0 ? -0.14 : 0.14;
+    this.bonusPuck.z = 0;
+    const dirZ = Math.random() < 0.5 ? 1 : -1;
+    const dirX = this.bonusPuck.x < 0 ? 1 : -1;
+    this.bonusPuck.vx = dirX * 1.9;
+    this.bonusPuck.vz = dirZ * 2.4;
+    this.bonusPuck.spin = 4;
+  }
+
+  public deactivateBonusPuck(): void {
+    this.bonusPuck.active = false;
+    this.bonusPuck.vx = 0;
+    this.bonusPuck.vz = 0;
+  }
+
+  public getPrimaryThreatPuck(): Body2D & { spin: number } {
+    if (!this.bonusPuck.active) return this.puck;
+    // Threat metric for AI: closer to AI goal (smaller z) and incoming negative vz
+    const scoreMain = -this.puck.z + (this.puck.vz < -0.3 ? 0.55 : 0);
+    const scoreBonus = -this.bonusPuck.z + (this.bonusPuck.vz < -0.3 ? 0.55 : 0);
+    return scoreBonus > scoreMain ? this.bonusPuck : this.puck;
+  }
+
   public resetPositions(serveTo: 'center' | 'p1' | 'p2' = 'center'): void {
     this.puck.x = 0;
     this.puck.vx = 0;
@@ -148,6 +222,13 @@ export class AirHockeyPhysics {
     } else {
       this.puck.z = 0;
     }
+
+    this.bonusPuck.active = false;
+    this.bonusPuck.x = 0;
+    this.bonusPuck.z = 0;
+    this.bonusPuck.vx = 0;
+    this.bonusPuck.vz = 0;
+    this.bonusPuck.spin = 0;
 
     this.p1.x = 0;
     this.p1.z = HALF_LENGTH - 0.34;
@@ -200,7 +281,7 @@ export class AirHockeyPhysics {
 
   /**
    * Immediately repositions the striker to the touch coordinate (e.g., on pointerdown)
-   * with zero phantom velocity while gently separating from the puck if touching on top of it.
+   * with zero phantom velocity while gently separating from active pucks if touching on top.
    */
   public snapPaddleTo(player: 1 | 2, tx: number, tz: number): void {
     const pad = player === 1 ? this.p1 : this.p2;
@@ -212,19 +293,29 @@ export class AirHockeyPhysics {
     pad.vx = 0;
     pad.vz = 0;
 
-    // Prevent overlapping puck cleanly without explosive impulse on initial touch-down
-    const dx = this.puck.x - pad.x;
-    const dz = this.puck.z - pad.z;
-    const minDist = this.puck.radius + pad.radius;
+    this.separatePaddleFromPuckOnSnap(pad, player, this.puck);
+    if (this.bonusPuck.active) {
+      this.separatePaddleFromPuckOnSnap(pad, player, this.bonusPuck);
+    }
+  }
+
+  private separatePaddleFromPuckOnSnap(
+    pad: PaddleBody,
+    player: 1 | 2,
+    puck: Body2D & { spin: number }
+  ): void {
+    const dx = puck.x - pad.x;
+    const dz = puck.z - pad.z;
+    const minDist = puck.radius + pad.radius;
     const distSq = dx * dx + dz * dz;
     if (distSq < minDist * minDist) {
       const dist = Math.sqrt(distSq);
       const nx = dist > 1e-6 ? dx / dist : 0;
       const nz = dist > 1e-6 ? dz / dist : player === 1 ? -1 : 1;
       const overlap = minDist - dist + 0.001;
-      this.puck.x += nx * overlap;
-      this.puck.z += nz * overlap;
-      this.resolveTableCollisions();
+      puck.x += nx * overlap;
+      puck.z += nz * overlap;
+      this.resolveTableCollisionsForPuck(puck);
     }
   }
 
@@ -236,7 +327,8 @@ export class AirHockeyPhysics {
   private createSubstepPlan(
     pad: PaddleBody,
     substeps: number,
-    totalFrameDt: number
+    totalFrameDt: number,
+    strikeBoost: number
   ): PaddleSubstepPlan {
     if (!pad.directControl || substeps <= 0 || totalFrameDt <= 0) {
       return { direct: false, stepDx: 0, stepDz: 0, velX: 0, velZ: 0 };
@@ -253,7 +345,9 @@ export class AirHockeyPhysics {
     const rawVelZ = dz / totalFrameDt;
     const rawSpeed = Math.hypot(rawVelX, rawVelZ);
     const maxStrike =
-      MAX_DIRECT_STRIKE_SPEED * Math.max(0.85, Math.min(1.25, this.speedScale));
+      MAX_DIRECT_STRIKE_SPEED *
+      Math.max(0.82, Math.min(1.35, this.speedScale)) *
+      strikeBoost;
 
     let velX = rawVelX;
     let velZ = rawVelZ;
@@ -283,7 +377,6 @@ export class AirHockeyPhysics {
     );
 
     if (plannedSubsteps === 0) {
-      // Sub-frame lock on >240Hz displays: keep direct human paddle glued to finger
       if (this.p1.directControl) {
         const clamped = this.clampPaddleCoords(this.p1.targetX, this.p1.targetZ, this.p1);
         this.p1.x = clamped.x;
@@ -298,8 +391,18 @@ export class AirHockeyPhysics {
     }
 
     const activeSpanDt = plannedSubsteps * FIXED_DT;
-    const plan1 = this.createSubstepPlan(this.p1, plannedSubsteps, activeSpanDt);
-    const plan2 = this.createSubstepPlan(this.p2, plannedSubsteps, activeSpanDt);
+    const plan1 = this.createSubstepPlan(
+      this.p1,
+      plannedSubsteps,
+      activeSpanDt,
+      this.strikeBoost1
+    );
+    const plan2 = this.createSubstepPlan(
+      this.p2,
+      plannedSubsteps,
+      activeSpanDt,
+      this.strikeBoost2
+    );
 
     for (let i = 0; i < plannedSubsteps; i++) {
       this.stepFixed(FIXED_DT, plan1, plan2);
@@ -322,59 +425,86 @@ export class AirHockeyPhysics {
   ): void {
     this.simTime += dt;
 
-    this.updatePaddle(this.p1, dt, plan1);
-    this.updatePaddle(this.p2, dt, plan2);
+    this.updatePaddle(this.p1, dt, plan1, this.strikeBoost1);
+    this.updatePaddle(this.p2, dt, plan2, this.strikeBoost2);
 
     if (this.goalTriggered) {
-      this.puck.x += this.puck.vx * dt;
-      this.puck.z += this.puck.vz * dt;
-      const damp = Math.exp(-6.0 * dt);
-      this.puck.vx *= damp;
-      this.puck.vz *= damp;
-      const maxPocketX = GOAL_HALF_WIDTH - this.puck.radius;
-      if (this.puck.x < -maxPocketX) {
-        this.puck.x = -maxPocketX;
-        this.puck.vx = Math.abs(this.puck.vx) * 0.4;
-      } else if (this.puck.x > maxPocketX) {
-        this.puck.x = maxPocketX;
-        this.puck.vx = -Math.abs(this.puck.vx) * 0.4;
-      }
-      const maxPocketZ = HALF_LENGTH + GOAL_DEPTH - this.puck.radius;
-      if (this.puck.z > maxPocketZ) {
-        this.puck.z = maxPocketZ;
-        this.puck.vz = -Math.abs(this.puck.vz) * 0.3;
-      } else if (this.puck.z < -maxPocketZ) {
-        this.puck.z = -maxPocketZ;
-        this.puck.vz = Math.abs(this.puck.vz) * 0.3;
+      this.dampGoalPocketPuck(this.puck, dt);
+      if (this.bonusPuck.active) {
+        this.dampGoalPocketPuck(this.bonusPuck, dt);
       }
       return;
     }
 
-    this.puck.x += this.puck.vx * dt;
-    this.puck.z += this.puck.vz * dt;
+    const puckDt = dt * Math.max(0.45, Math.min(1.5, this.puckTimeScale));
+    this.advanceAndResolvePuck(this.puck, puckDt, dt, false);
 
-    const drag = Math.exp(-PUCK_AIR_DRAG * dt);
-    this.puck.vx *= drag;
-    this.puck.vz *= drag;
-    this.puck.spin *= Math.exp(-1.5 * dt);
+    if (!this.goalTriggered && this.bonusPuck.active) {
+      this.advanceAndResolvePuck(this.bonusPuck, puckDt, dt, true);
+      this.resolvePuckPairCollision(this.puck, this.bonusPuck);
+      this.resolveTableCollisionsForPuck(this.puck);
+      this.resolveTableCollisionsForPuck(this.bonusPuck);
+    }
+  }
 
-    this.resolvePaddleCollision(this.p1, 1);
-    this.resolvePaddleCollision(this.p2, 2);
-    this.resolveTableCollisions();
-    this.resolvePaddleCollision(this.p1, 1);
-    this.resolvePaddleCollision(this.p2, 2);
-    this.resolveTableCollisions();
+  private dampGoalPocketPuck(
+    puck: Body2D & { spin: number },
+    dt: number
+  ): void {
+    puck.x += puck.vx * dt;
+    puck.z += puck.vz * dt;
+    const damp = Math.exp(-6.0 * dt);
+    puck.vx *= damp;
+    puck.vz *= damp;
+    const maxPocketX = GOAL_HALF_WIDTH - puck.radius;
+    if (puck.x < -maxPocketX) {
+      puck.x = -maxPocketX;
+      puck.vx = Math.abs(puck.vx) * 0.4;
+    } else if (puck.x > maxPocketX) {
+      puck.x = maxPocketX;
+      puck.vx = -Math.abs(puck.vx) * 0.4;
+    }
+    const maxPocketZ = HALF_LENGTH + GOAL_DEPTH - puck.radius;
+    if (puck.z > maxPocketZ) {
+      puck.z = maxPocketZ;
+      puck.vz = -Math.abs(puck.vz) * 0.3;
+    } else if (puck.z < -maxPocketZ) {
+      puck.z = -maxPocketZ;
+      puck.vz = Math.abs(puck.vz) * 0.3;
+    }
+  }
+
+  private advanceAndResolvePuck(
+    puck: Body2D & { spin: number },
+    puckDt: number,
+    realDt: number,
+    isBonus: boolean
+  ): void {
+    puck.x += puck.vx * puckDt;
+    puck.z += puck.vz * puckDt;
+
+    const drag = Math.exp(-PUCK_AIR_DRAG * puckDt);
+    puck.vx *= drag;
+    puck.vz *= drag;
+    puck.spin *= Math.exp(-1.5 * puckDt);
+
+    this.resolvePaddleCollisionForPuck(puck, this.p1, 1);
+    this.resolvePaddleCollisionForPuck(puck, this.p2, 2);
+    this.resolveTableCollisionsForPuck(puck);
+    this.resolvePaddleCollisionForPuck(puck, this.p1, 1);
+    this.resolvePaddleCollisionForPuck(puck, this.p2, 2);
+    this.resolveTableCollisionsForPuck(puck);
 
     const maxSpd =
       MAX_PUCK_SPEED * Math.max(0.75, Math.min(1.5, this.speedScale));
-    const spd = Math.hypot(this.puck.vx, this.puck.vz);
+    const spd = Math.hypot(puck.vx, puck.vz);
     if (spd > maxSpd) {
       const ratio = maxSpd / spd;
-      this.puck.vx *= ratio;
-      this.puck.vz *= ratio;
+      puck.vx *= ratio;
+      puck.vz *= ratio;
     } else if (spd < 0.008) {
-      this.puck.vx = 0;
-      this.puck.vz = 0;
+      puck.vx = 0;
+      puck.vz = 0;
     }
 
     const kmh = Math.round(Math.min(spd, maxSpd) * SPEED_TO_KMH);
@@ -382,31 +512,65 @@ export class AirHockeyPhysics {
       this.topSpeedKmh = kmh;
     }
 
-    const nearBoundary =
-      Math.abs(this.puck.x) > HALF_WIDTH - this.puck.radius - 0.02 ||
-      Math.abs(this.puck.z) > HALF_LENGTH - this.puck.radius - 0.02;
-    if (nearBoundary && spd < 0.06) {
-      this.stuckTimer += dt;
-      if (this.stuckTimer > 1.4) {
-        const toCenterX = -this.puck.x;
-        const toCenterZ = -this.puck.z;
-        const len = Math.hypot(toCenterX, toCenterZ) || 1;
-        this.puck.vx += (toCenterX / len) * 0.9;
-        this.puck.vz += (toCenterZ / len) * 0.9;
+    if (!isBonus) {
+      const nearBoundary =
+        Math.abs(puck.x) > HALF_WIDTH - puck.radius - 0.02 ||
+        Math.abs(puck.z) > HALF_LENGTH - puck.radius - 0.02;
+      if (nearBoundary && spd < 0.06) {
+        this.stuckTimer += realDt;
+        if (this.stuckTimer > 1.4) {
+          const toCenterX = -puck.x;
+          const toCenterZ = -puck.z;
+          const len = Math.hypot(toCenterX, toCenterZ) || 1;
+          puck.vx += (toCenterX / len) * 0.9;
+          puck.vz += (toCenterZ / len) * 0.9;
+          this.stuckTimer = 0;
+        }
+      } else {
         this.stuckTimer = 0;
       }
-    } else {
-      this.stuckTimer = 0;
     }
 
-    if (Math.abs(this.puck.x) < GOAL_HALF_WIDTH) {
-      if (this.puck.z < -(HALF_LENGTH + this.puck.radius * 0.35)) {
+    if (Math.abs(puck.x) < GOAL_HALF_WIDTH) {
+      if (puck.z < -(HALF_LENGTH + puck.radius * 0.35)) {
         this.goalTriggered = true;
         this.events.onGoal?.(1, kmh);
-      } else if (this.puck.z > HALF_LENGTH + this.puck.radius * 0.35) {
+      } else if (puck.z > HALF_LENGTH + puck.radius * 0.35) {
         this.goalTriggered = true;
         this.events.onGoal?.(2, kmh);
       }
+    }
+  }
+
+  private resolvePuckPairCollision(
+    a: Body2D & { spin: number },
+    b: Body2D & { spin: number }
+  ): void {
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const minDist = a.radius + b.radius;
+    const distSq = dx * dx + dz * dz;
+    if (distSq >= minDist * minDist || distSq < 1e-8) return;
+
+    const dist = Math.sqrt(distSq);
+    const nx = dx / dist;
+    const nz = dz / dist;
+    const overlap = (minDist - dist) * 0.5 + 0.0004;
+    a.x -= nx * overlap;
+    a.z -= nz * overlap;
+    b.x += nx * overlap;
+    b.z += nz * overlap;
+
+    const rvx = b.vx - a.vx;
+    const rvz = b.vz - a.vz;
+    const relVn = rvx * nx + rvz * nz;
+    if (relVn < 0) {
+      const restitution = 0.92;
+      const impulse = (-(1 + restitution) * relVn) / 2;
+      a.vx -= impulse * nx;
+      a.vz -= impulse * nz;
+      b.vx += impulse * nx;
+      b.vz += impulse * nz;
     }
   }
 
@@ -439,7 +603,8 @@ export class AirHockeyPhysics {
   private updatePaddle(
     pad: PaddleBody,
     dt: number,
-    plan: PaddleSubstepPlan
+    plan: PaddleSubstepPlan,
+    strikeBoost: number
   ): void {
     if (plan.direct) {
       pad.x += plan.stepDx;
@@ -465,7 +630,9 @@ export class AirHockeyPhysics {
 
     const desiredSpeed = dist / dt;
     const maxSpeed =
-      MAX_PADDLE_SPEED * Math.max(0.85, Math.min(1.25, this.speedScale));
+      MAX_PADDLE_SPEED *
+      Math.max(0.82, Math.min(1.35, this.speedScale)) *
+      strikeBoost;
     if (desiredSpeed <= maxSpeed) {
       pad.vx = dx / dt;
       pad.vz = dz / dt;
@@ -485,11 +652,15 @@ export class AirHockeyPhysics {
     pad.z = postClamp.z;
   }
 
-  private resolvePaddleCollision(pad: PaddleBody, player: 1 | 2): void {
-    const dx = this.puck.x - pad.x;
-    const dz = this.puck.z - pad.z;
+  private resolvePaddleCollisionForPuck(
+    puck: Body2D & { spin: number },
+    pad: PaddleBody,
+    player: 1 | 2
+  ): void {
+    const dx = puck.x - pad.x;
+    const dz = puck.z - pad.z;
     const distSq = dx * dx + dz * dz;
-    const minDist = this.puck.radius + pad.radius;
+    const minDist = puck.radius + pad.radius;
 
     if (distSq >= minDist * minDist) return;
 
@@ -506,44 +677,44 @@ export class AirHockeyPhysics {
     }
 
     const penetration = minDist - dist;
-    this.puck.x += nx * (penetration + 0.0005);
-    this.puck.z += nz * (penetration + 0.0005);
+    puck.x += nx * (penetration + 0.0005);
+    puck.z += nz * (penetration + 0.0005);
 
-    // Anti-pinning guard: if puck is squeezed against side/back wall, nudge parallel toward open table
-    const pinnedSide = Math.abs(this.puck.x) >= HALF_WIDTH - this.puck.radius - 0.003;
+    const pinnedSide = Math.abs(puck.x) >= HALF_WIDTH - puck.radius - 0.003;
     const pinnedEnd =
-      Math.abs(this.puck.z) >= HALF_LENGTH - this.puck.radius - 0.003 &&
-      Math.abs(this.puck.x) >= GOAL_HALF_WIDTH;
+      Math.abs(puck.z) >= HALF_LENGTH - puck.radius - 0.003 &&
+      Math.abs(puck.x) >= GOAL_HALF_WIDTH;
     if (pinnedSide) {
       const escapeDirZ = player === 1 ? -1 : 1;
-      this.puck.vz += escapeDirZ * 0.45;
-      this.puck.vx += (this.puck.x > 0 ? -1 : 1) * 0.3;
+      puck.vz += escapeDirZ * 0.45;
+      puck.vx += (puck.x > 0 ? -1 : 1) * 0.3;
     } else if (pinnedEnd) {
-      this.puck.vx += (this.puck.x > 0 ? -1 : 1) * 0.45;
+      puck.vx += (puck.x > 0 ? -1 : 1) * 0.45;
     }
 
-    const rvx = this.puck.vx - pad.vx;
-    const rvz = this.puck.vz - pad.vz;
+    const rvx = puck.vx - pad.vx;
+    const rvz = puck.vz - pad.vz;
     const relVelAlongNormal = rvx * nx + rvz * nz;
 
     if (relVelAlongNormal < 0) {
-      const e = PADDLE_RESTITUTION;
-      const invM1 = 1 / this.puck.mass;
+      const boost = player === 1 ? this.strikeBoost1 : this.strikeBoost2;
+      const e = PADDLE_RESTITUTION * (boost > 1 ? 1.12 : 1.0);
+      const invM1 = 1 / puck.mass;
       const invM2 = 1 / pad.mass;
       const j = (-(1 + e) * relVelAlongNormal) / (invM1 + invM2);
 
       const impulse = j * invM1;
-      this.puck.vx += impulse * nx;
-      this.puck.vz += impulse * nz;
+      puck.vx += impulse * nx;
+      puck.vz += impulse * nz;
 
       const tx = -nz;
       const tz = nx;
       const relTangential = rvx * tx + rvz * tz;
-      this.puck.vx -= relTangential * 0.06 * tx;
-      this.puck.vz -= relTangential * 0.06 * tz;
-      this.puck.spin = Math.max(
+      puck.vx -= relTangential * 0.06 * tx;
+      puck.vz -= relTangential * 0.06 * tz;
+      puck.spin = Math.max(
         -25,
-        Math.min(25, this.puck.spin + relTangential * 3.5)
+        Math.min(25, puck.spin + relTangential * 3.5)
       );
 
       const impactSpeed = Math.abs(relVelAlongNormal);
@@ -563,31 +734,31 @@ export class AirHockeyPhysics {
     }
   }
 
-  private resolveTableCollisions(): void {
-    const r = this.puck.radius;
+  private resolveTableCollisionsForPuck(puck: Body2D & { spin: number }): void {
+    const r = puck.radius;
     let bounced = false;
-    let hitX = this.puck.x;
-    let hitZ = this.puck.z;
+    let hitX = puck.x;
+    let hitZ = puck.z;
     let impactSpeed = 0;
 
     let handledCorner = false;
     for (const c of CORNER_CENTERS) {
-      const inCornerX = c.sx < 0 ? this.puck.x < c.cx : this.puck.x > c.cx;
-      const inCornerZ = c.sz < 0 ? this.puck.z < c.cz : this.puck.z > c.cz;
+      const inCornerX = c.sx < 0 ? puck.x < c.cx : puck.x > c.cx;
+      const inCornerZ = c.sz < 0 ? puck.z < c.cz : puck.z > c.cz;
       if (inCornerX && inCornerZ) {
-        const dx = this.puck.x - c.cx;
-        const dz = this.puck.z - c.cz;
+        const dx = puck.x - c.cx;
+        const dz = puck.z - c.cz;
         const dist = Math.hypot(dx, dz);
         const maxDist = CORNER_RADIUS - r;
         if (dist > maxDist && dist > 1e-6) {
           const nx = -dx / dist;
           const nz = -dz / dist;
-          this.puck.x = c.cx - nx * maxDist;
-          this.puck.z = c.cz - nz * maxDist;
-          const vn = this.puck.vx * nx + this.puck.vz * nz;
+          puck.x = c.cx - nx * maxDist;
+          puck.z = c.cz - nz * maxDist;
+          const vn = puck.vx * nx + puck.vz * nz;
           if (vn < 0) {
-            this.puck.vx -= (1 + WALL_RESTITUTION) * vn * nx;
-            this.puck.vz -= (1 + WALL_RESTITUTION) * vn * nz;
+            puck.vx -= (1 + WALL_RESTITUTION) * vn * nx;
+            puck.vz -= (1 + WALL_RESTITUTION) * vn * nz;
             impactSpeed = Math.max(impactSpeed, Math.abs(vn));
             hitX = c.cx - nx * CORNER_RADIUS;
             hitZ = c.cz - nz * CORNER_RADIUS;
@@ -600,43 +771,60 @@ export class AirHockeyPhysics {
     }
 
     if (!handledCorner) {
-      if (this.puck.x < -HALF_WIDTH + r) {
-        this.puck.x = -HALF_WIDTH + r;
-        if (this.puck.vx < 0) {
-          impactSpeed = Math.max(impactSpeed, Math.abs(this.puck.vx));
-          this.puck.vx = -this.puck.vx * WALL_RESTITUTION;
+      if (puck.x < -HALF_WIDTH + r) {
+        puck.x = -HALF_WIDTH + r;
+        if (puck.vx < 0) {
+          impactSpeed = Math.max(impactSpeed, Math.abs(puck.vx));
+          puck.vx = -puck.vx * WALL_RESTITUTION;
           hitX = -HALF_WIDTH;
-          hitZ = this.puck.z;
+          hitZ = puck.z;
           bounced = true;
         }
-      } else if (this.puck.x > HALF_WIDTH - r) {
-        this.puck.x = HALF_WIDTH - r;
-        if (this.puck.vx > 0) {
-          impactSpeed = Math.max(impactSpeed, Math.abs(this.puck.vx));
-          this.puck.vx = -this.puck.vx * WALL_RESTITUTION;
+      } else if (puck.x > HALF_WIDTH - r) {
+        puck.x = HALF_WIDTH - r;
+        if (puck.vx > 0) {
+          impactSpeed = Math.max(impactSpeed, Math.abs(puck.vx));
+          puck.vx = -puck.vx * WALL_RESTITUTION;
           hitX = HALF_WIDTH;
-          hitZ = this.puck.z;
+          hitZ = puck.z;
           bounced = true;
+        }
+      }
+    }
+
+    // Active Goal Shields block pucks right across the goal mouth line
+    if (!handledCorner && Math.abs(puck.x) < GOAL_HALF_WIDTH) {
+      if (this.goalShield2 && puck.z < -HALF_LENGTH + r + 0.01 && puck.z > -HALF_LENGTH - r) {
+        puck.z = -HALF_LENGTH + r + 0.01;
+        if (puck.vz < 0) {
+          puck.vz = -puck.vz * 0.94;
+          this.events.onShieldHit?.(2, puck.x, -HALF_LENGTH);
+        }
+      } else if (this.goalShield1 && puck.z > HALF_LENGTH - r - 0.01 && puck.z < HALF_LENGTH + r) {
+        puck.z = HALF_LENGTH - r - 0.01;
+        if (puck.vz > 0) {
+          puck.vz = -puck.vz * 0.94;
+          this.events.onShieldHit?.(1, puck.x, HALF_LENGTH);
         }
       }
     }
 
     const postRadius = 0.012;
     for (const post of GOAL_POSTS) {
-      const dx = this.puck.x - post.x;
-      const dz = this.puck.z - post.z;
+      const dx = puck.x - post.x;
+      const dz = puck.z - post.z;
       const minD = r + postRadius;
       const distSq = dx * dx + dz * dz;
       if (distSq < minD * minD && distSq > 1e-8) {
         const dist = Math.sqrt(distSq);
         const nx = dx / dist;
         const nz = dz / dist;
-        this.puck.x = post.x + nx * minD;
-        this.puck.z = post.z + nz * minD;
-        const vn = this.puck.vx * nx + this.puck.vz * nz;
+        puck.x = post.x + nx * minD;
+        puck.z = post.z + nz * minD;
+        const vn = puck.vx * nx + puck.vz * nz;
         if (vn < 0) {
-          this.puck.vx -= (1 + WALL_RESTITUTION) * vn * nx;
-          this.puck.vz -= (1 + WALL_RESTITUTION) * vn * nz;
+          puck.vx -= (1 + WALL_RESTITUTION) * vn * nx;
+          puck.vz -= (1 + WALL_RESTITUTION) * vn * nz;
           impactSpeed = Math.max(impactSpeed, Math.abs(vn));
           hitX = post.x;
           hitZ = post.z;
@@ -645,34 +833,33 @@ export class AirHockeyPhysics {
       }
     }
 
-    // Guide puck cleanly inside goal pocket side walls if entering mouth past goal line
-    if (Math.abs(this.puck.z) > HALF_LENGTH && Math.abs(this.puck.x) < GOAL_HALF_WIDTH) {
+    if (Math.abs(puck.z) > HALF_LENGTH && Math.abs(puck.x) < GOAL_HALF_WIDTH) {
       const maxPocketX = GOAL_HALF_WIDTH - r;
-      if (this.puck.x < -maxPocketX) {
-        this.puck.x = -maxPocketX;
-        if (this.puck.vx < 0) this.puck.vx = -this.puck.vx * 0.65;
-      } else if (this.puck.x > maxPocketX) {
-        this.puck.x = maxPocketX;
-        if (this.puck.vx > 0) this.puck.vx = -this.puck.vx * 0.65;
+      if (puck.x < -maxPocketX) {
+        puck.x = -maxPocketX;
+        if (puck.vx < 0) puck.vx = -puck.vx * 0.65;
+      } else if (puck.x > maxPocketX) {
+        puck.x = maxPocketX;
+        if (puck.vx > 0) puck.vx = -puck.vx * 0.65;
       }
     }
 
-    if (!handledCorner && Math.abs(this.puck.x) >= GOAL_HALF_WIDTH) {
-      if (this.puck.z < -HALF_LENGTH + r) {
-        this.puck.z = -HALF_LENGTH + r;
-        if (this.puck.vz < 0) {
-          impactSpeed = Math.max(impactSpeed, Math.abs(this.puck.vz));
-          this.puck.vz = -this.puck.vz * WALL_RESTITUTION;
-          hitX = this.puck.x;
+    if (!handledCorner && Math.abs(puck.x) >= GOAL_HALF_WIDTH) {
+      if (puck.z < -HALF_LENGTH + r) {
+        puck.z = -HALF_LENGTH + r;
+        if (puck.vz < 0) {
+          impactSpeed = Math.max(impactSpeed, Math.abs(puck.vz));
+          puck.vz = -puck.vz * WALL_RESTITUTION;
+          hitX = puck.x;
           hitZ = -HALF_LENGTH;
           bounced = true;
         }
-      } else if (this.puck.z > HALF_LENGTH - r) {
-        this.puck.z = HALF_LENGTH - r;
-        if (this.puck.vz > 0) {
-          impactSpeed = Math.max(impactSpeed, Math.abs(this.puck.vz));
-          this.puck.vz = -this.puck.vz * WALL_RESTITUTION;
-          hitX = this.puck.x;
+      } else if (puck.z > HALF_LENGTH - r) {
+        puck.z = HALF_LENGTH - r;
+        if (puck.vz > 0) {
+          impactSpeed = Math.max(impactSpeed, Math.abs(puck.vz));
+          puck.vz = -puck.vz * WALL_RESTITUTION;
+          hitX = puck.x;
           hitZ = HALF_LENGTH;
           bounced = true;
         }

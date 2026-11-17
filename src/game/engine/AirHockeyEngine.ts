@@ -2,7 +2,13 @@ import * as THREE from 'three';
 import { SoundEngine } from '@/audio/SoundEngine';
 import { HockeyAI } from '@/game/ai/HockeyAI';
 import { ArenaCameraController } from '@/game/camera/ArenaCameraController';
-import { HALF_LENGTH, SPEED_TO_KMH, SURFACE_Y } from '@/game/constants/arena';
+import {
+  GAMEPLAY_SPEED_SCALES,
+  HALF_LENGTH,
+  PUCK_RADIUS,
+  SPEED_TO_KMH,
+  SURFACE_Y,
+} from '@/game/constants/arena';
 import { MultiTouchInputController } from '@/game/controls/MultiTouchInputController';
 import {
   CinematicChoreography,
@@ -12,16 +18,26 @@ import { AirHockeyPhysics } from '@/game/physics/AirHockeyPhysics';
 import { buildArenaScene, type BuiltSceneObjects } from '@/game/scene/sceneBuilder';
 import { ArenaVFX } from '@/game/vfx/ArenaVFX';
 import type {
+  ActivePowerUpState,
   LiveMatchHUDState,
   MatchConfig,
   MatchPhase,
   PlayerIdentity,
+  PowerUpType,
   QualityPreset,
   UserPreferences,
 } from '@/types/game';
 import { detectSoftwareWebGL, scheduleAfterDraw } from '@/utils/webgl';
 
 export type { CinematicStage };
+
+export interface SeriesMatchMeta {
+  seriesWins1: number;
+  seriesWins2: number;
+  seriesRound: number;
+  seriesTargetWins: number;
+  tournamentStageLabel: string | null;
+}
 
 export interface EngineCallbacks {
   onHUDUpdate: (hud: LiveMatchHUDState) => void;
@@ -31,6 +47,22 @@ export interface EngineCallbacks {
   onContextLost?: () => void;
   onContextRestored?: () => void;
 }
+
+const POWER_UP_TYPES: ReadonlyArray<PowerUpType> = [
+  'speed_boost',
+  'larger_striker',
+  'slow_motion',
+  'double_puck',
+  'goal_shield',
+];
+
+const POWER_UP_COLORS: Record<PowerUpType, number> = {
+  speed_boost: 0xfacc15,
+  larger_striker: 0x00e5ff,
+  slow_motion: 0x818cf8,
+  double_puck: 0xc084fc,
+  goal_shield: 0x34d399,
+};
 
 export class AirHockeyEngine {
   private container: HTMLElement;
@@ -62,6 +94,7 @@ export class AirHockeyEngine {
   private score1 = 0;
   private score2 = 0;
   private remainingSeconds = 180;
+  private matchElapsedSeconds = 0;
   private countdownTimer = 0;
   private lastCountdownStep = -1;
   private goalPauseTimer = 0;
@@ -72,6 +105,24 @@ export class AirHockeyEngine {
   private practiceSparring = false;
   private winningGoalPending = false;
   private lastHudEmitKey = '';
+
+  // Series / Tournament state
+  private seriesWins1 = 0;
+  private seriesWins2 = 0;
+  private seriesRound = 1;
+  private seriesTargetWins = 1;
+  private tournamentStageLabel: string | null = null;
+
+  // Power-ups state
+  private powerUpOrb: {
+    active: boolean;
+    type: PowerUpType;
+    x: number;
+    z: number;
+  } = { active: false, type: 'speed_boost', x: 0, z: 0 };
+  private powerUpSpawnTimer = 7.5;
+  private activePowerUps: ActivePowerUpState[] = [];
+  private lastTouchPlayer: 1 | 2 = 1;
 
   // Frame pacing & juice
   private hitstopTimer = 0;
@@ -129,6 +180,7 @@ export class AirHockeyEngine {
 
     this.physics = new AirHockeyPhysics({
       onPaddleHit: (player, x, z, impactSpeed) => {
+        this.lastTouchPlayer = player;
         this.audio.playPaddleHit(impactSpeed);
         this.vfx.spawnImpact(
           x,
@@ -150,6 +202,10 @@ export class AirHockeyEngine {
         if (!this.prefs.reducedMotion && impactSpeed > 4.2) {
           this.cameraController.addShake(impactSpeed * 0.0014, 0.012);
         }
+      },
+      onShieldHit: (_defender, x, z) => {
+        this.audio.playShieldBounce();
+        this.vfx.spawnImpact(x, z, 1.2, 'shield', 2.8);
       },
       onGoal: (scorer, puckSpeedKmh) => {
         if (this.phase === 'cinematic') {
@@ -183,7 +239,11 @@ export class AirHockeyEngine {
       this.renderer.compile(this.scene, this.cameraController.camera);
     }
 
-    this.cameraController.snapToInitial(this.prefs.cameraView, this.prefs.reducedMotion);
+    this.cameraController.snapToInitial(
+      this.prefs.cameraView,
+      this.prefs.tableOrientation,
+      this.prefs.reducedMotion
+    );
 
     this.clock.start();
     this.startLoop();
@@ -241,6 +301,7 @@ export class AirHockeyEngine {
   }
 
   public setCinematicStage(stage: CinematicStage): void {
+    this.clearPowerUps();
     this.cinematic.startStage(stage, this.physics, this.vfx);
     this.input.setActive(false);
     this.physics.setPaddleDirectControl(1, false);
@@ -255,7 +316,8 @@ export class AirHockeyEngine {
     if (this.config.mode === 'practice') {
       this.physics.speedScale = this.config.practiceSpeedMultiplier;
     } else {
-      this.physics.speedScale = 1.0;
+      this.physics.speedScale =
+        GAMEPLAY_SPEED_SCALES[this.config.gameplaySpeed] ?? 1.0;
     }
     this.syncPaddleControlModes();
   }
@@ -301,7 +363,7 @@ export class AirHockeyEngine {
     return 'high';
   }
 
-  public startMatch(config: MatchConfig): void {
+  public startMatch(config: MatchConfig, seriesMeta?: SeriesMatchMeta): void {
     this.cinematic.stage = 'none';
     this.matchId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     this.updateConfig(config);
@@ -310,6 +372,7 @@ export class AirHockeyEngine {
     this.score2 = 0;
     this.remainingSeconds =
       config.mode === 'practice' ? 0 : config.durationSeconds;
+    this.matchElapsedSeconds = 0;
     this.lastGoalScorer = null;
     this.lastGoalSpeedKmh = 0;
     this.pendingServe = 'center';
@@ -321,6 +384,18 @@ export class AirHockeyEngine {
     this.goalFlashP2 = 0;
     this.speedSyncAccumulator = 0;
     this.phaseBeforePause = 'active';
+    this.lastTouchPlayer = 1;
+
+    this.seriesWins1 = seriesMeta?.seriesWins1 ?? 0;
+    this.seriesWins2 = seriesMeta?.seriesWins2 ?? 0;
+    this.seriesRound = seriesMeta?.seriesRound ?? 1;
+    this.seriesTargetWins =
+      seriesMeta?.seriesTargetWins ?? (config.mode === 'best_of_three' ? 2 : 1);
+    this.tournamentStageLabel = seriesMeta?.tournamentStageLabel ?? null;
+
+    this.clearPowerUps();
+    this.powerUpSpawnTimer = 6.5;
+
     this.cameraController.setShake(0);
     this.physics.topSpeedKmh = 0;
     this.physics.totalHits = 0;
@@ -333,6 +408,7 @@ export class AirHockeyEngine {
       this.phase = 'active';
       this.input.setActive(true);
       this.physics.launchPracticePuck(config.practiceSpeedMultiplier);
+      this.audio.playMatchStart();
     } else {
       this.phase = 'countdown';
       this.countdownTimer = 2.7;
@@ -351,6 +427,7 @@ export class AirHockeyEngine {
     this.hitstopTimer = 0;
     this.goalFlashP1 = 0;
     this.goalFlashP2 = 0;
+    this.clearPowerUps();
     this.cameraController.setShake(0);
     this.sceneObjects.goalLightP1.intensity = 0;
     this.sceneObjects.goalLightP2.intensity = 0;
@@ -392,6 +469,179 @@ export class AirHockeyEngine {
       2,
       activePlay && this.config.mode === 'two_player'
     );
+  }
+
+  private isAIEnabledMode(): boolean {
+    return (
+      this.config.mode === 'vs_ai' ||
+      this.config.mode === 'time_challenge' ||
+      this.config.mode === 'best_of_three' ||
+      this.config.mode === 'tournament' ||
+      (this.config.mode === 'practice' && this.practiceSparring)
+    );
+  }
+
+  private clearPowerUps(): void {
+    this.powerUpOrb.active = false;
+    this.activePowerUps = [];
+    this.physics.resetPowerUpModifiers();
+    this.sceneObjects.setPowerUpOrbState(false, 0, 0, 0xfacc15);
+    this.sceneObjects.setBonusPuckState(false, 0, 0, 0, 0);
+    this.sceneObjects.setGoalShieldState(false, false);
+    this.sceneObjects.setPaddleVisualScale(1, 1);
+    this.sceneObjects.setPaddleVisualScale(2, 1);
+  }
+
+  private syncPhysicsAndVisualPowerUps(): void {
+    let boost1 = 1.0;
+    let boost2 = 1.0;
+    let scale1 = 1.0;
+    let scale2 = 1.0;
+    let puckScale = 1.0;
+    let shield1 = false;
+    let shield2 = false;
+    let doublePuck = false;
+
+    for (const p of this.activePowerUps) {
+      if (p.type === 'speed_boost') {
+        if (p.owner === 1) boost1 = 1.38;
+        if (p.owner === 2) boost2 = 1.38;
+      } else if (p.type === 'larger_striker') {
+        if (p.owner === 1) scale1 = 1.32;
+        if (p.owner === 2) scale2 = 1.32;
+      } else if (p.type === 'slow_motion') {
+        puckScale = 0.58;
+      } else if (p.type === 'goal_shield') {
+        if (p.owner === 1) shield1 = true;
+        if (p.owner === 2) shield2 = true;
+      } else if (p.type === 'double_puck') {
+        doublePuck = true;
+      }
+    }
+
+    this.physics.strikeBoost1 = boost1;
+    this.physics.strikeBoost2 = boost2;
+    this.physics.puckTimeScale = puckScale;
+    this.physics.goalShield1 = shield1;
+    this.physics.goalShield2 = shield2;
+    this.physics.setPaddleRadiusScale(1, scale1);
+    this.physics.setPaddleRadiusScale(2, scale2);
+    this.sceneObjects.setPaddleVisualScale(1, scale1);
+    this.sceneObjects.setPaddleVisualScale(2, scale2);
+    this.sceneObjects.setGoalShieldState(shield1, shield2);
+
+    if (doublePuck && !this.physics.bonusPuck.active) {
+      this.physics.activateBonusPuck();
+    } else if (!doublePuck && this.physics.bonusPuck.active) {
+      this.physics.deactivateBonusPuck();
+    }
+  }
+
+  private applyPowerUpPickup(type: PowerUpType, owner: 1 | 2): void {
+    const durationMap: Record<PowerUpType, number> = {
+      speed_boost: 7,
+      larger_striker: 8,
+      slow_motion: 6,
+      double_puck: 10,
+      goal_shield: 9,
+    };
+    const resolvedOwner: 1 | 2 | 'both' =
+      type === 'slow_motion' || type === 'double_puck' ? 'both' : owner;
+
+    this.activePowerUps = this.activePowerUps.filter(
+      (item) => !(item.type === type && item.owner === resolvedOwner)
+    );
+    this.activePowerUps.push({
+      type,
+      owner: resolvedOwner,
+      remainingSeconds: durationMap[type],
+    });
+    this.syncPhysicsAndVisualPowerUps();
+    this.audio.playPowerUp();
+    this.vfx.spawnImpact(
+      this.powerUpOrb.x,
+      this.powerUpOrb.z,
+      1.35,
+      'powerup',
+      3.0
+    );
+    this.vibrate(18);
+    this.pushHUD(true);
+  }
+
+  private updatePowerUps(dt: number): void {
+    if (!this.config.powerUpsEnabled || this.config.mode === 'practice') return;
+
+    let changed = false;
+    for (let i = this.activePowerUps.length - 1; i >= 0; i--) {
+      this.activePowerUps[i].remainingSeconds -= dt;
+      if (this.activePowerUps[i].remainingSeconds <= 0) {
+        this.activePowerUps.splice(i, 1);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.syncPhysicsAndVisualPowerUps();
+      this.pushHUD(true);
+    }
+
+    if (!this.powerUpOrb.active) {
+      this.powerUpSpawnTimer -= dt;
+      if (this.powerUpSpawnTimer <= 0) {
+        const nextType =
+          POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)];
+        this.powerUpOrb = {
+          active: true,
+          type: nextType,
+          x: (Math.random() - 0.5) * 0.68,
+          z: (Math.random() - 0.5) * 0.72,
+        };
+        this.sceneObjects.setPowerUpOrbState(
+          true,
+          this.powerUpOrb.x,
+          this.powerUpOrb.z,
+          POWER_UP_COLORS[nextType]
+        );
+        this.powerUpSpawnTimer = 9 + Math.random() * 4;
+      }
+      return;
+    }
+
+    // Check pickup collision with main puck, bonus puck, or either paddle
+    const orbR = 0.052;
+    const p = this.physics.puck;
+    const bp = this.physics.bonusPuck;
+    const hitMainPuck =
+      Math.hypot(p.x - this.powerUpOrb.x, p.z - this.powerUpOrb.z) <
+      PUCK_RADIUS + orbR;
+    const hitBonusPuck =
+      bp.active &&
+      Math.hypot(bp.x - this.powerUpOrb.x, bp.z - this.powerUpOrb.z) <
+        PUCK_RADIUS + orbR;
+    const hitP1 =
+      Math.hypot(
+        this.physics.p1.x - this.powerUpOrb.x,
+        this.physics.p1.z - this.powerUpOrb.z
+      ) <
+      this.physics.p1.radius + orbR;
+    const hitP2 =
+      Math.hypot(
+        this.physics.p2.x - this.powerUpOrb.x,
+        this.physics.p2.z - this.powerUpOrb.z
+      ) <
+      this.physics.p2.radius + orbR;
+
+    if (hitP1 || hitP2 || hitMainPuck || hitBonusPuck) {
+      const collector: 1 | 2 = hitP1
+        ? 1
+        : hitP2
+        ? 2
+        : this.lastTouchPlayer;
+      const collectedType = this.powerUpOrb.type;
+      this.powerUpOrb.active = false;
+      this.sceneObjects.setPowerUpOrbState(false, 0, 0, 0xfacc15);
+      this.applyPowerUpPickup(collectedType, collector);
+    }
   }
 
   private vibrate(pattern: number | number[]): void {
@@ -452,8 +702,11 @@ export class AirHockeyEngine {
       this.cameraController.setShake(0.024);
     }
 
+    // Time Challenge & Practice play continuously without early goal-cap victory
     const winTarget =
-      this.config.mode !== 'practice' && this.config.winningScore > 0
+      this.config.mode !== 'practice' &&
+      this.config.mode !== 'time_challenge' &&
+      this.config.winningScore > 0
         ? this.config.winningScore
         : 0;
     this.winningGoalPending =
@@ -461,7 +714,11 @@ export class AirHockeyEngine {
       (this.score1 >= winTarget || this.score2 >= winTarget);
 
     this.phase = 'goal_pause';
-    this.goalPauseTimer = this.winningGoalPending ? 1.1 : 1.45;
+    this.goalPauseTimer = this.winningGoalPending
+      ? 1.05
+      : this.config.mode === 'time_challenge'
+      ? 0.65
+      : 1.4;
     this.input.setActive(false);
     this.syncPaddleControlModes();
     this.pushHUD(true);
@@ -470,13 +727,21 @@ export class AirHockeyEngine {
   private finishMatch(): void {
     this.phase = 'finished';
     this.winningGoalPending = false;
+    this.clearPowerUps();
     this.input.setActive(false);
     this.syncPaddleControlModes();
+
     if (this.score1 > this.score2) this.winner = 'p1';
     else if (this.score2 > this.score1) this.winner = 'p2';
     else this.winner = 'draw';
 
-    this.audio.playVictory();
+    const lostToAI = this.isAIEnabledMode() && this.winner === 'p2';
+    if (lostToAI) {
+      this.audio.playDefeat();
+    } else {
+      this.audio.playVictory();
+    }
+
     const hud = this.buildHUDState();
     this.lastHudEmitKey = '';
     this.callbacks.onHUDUpdate(hud);
@@ -490,6 +755,7 @@ export class AirHockeyEngine {
       score1: this.score1,
       score2: this.score2,
       remainingSeconds: Math.max(0, Math.ceil(this.remainingSeconds)),
+      elapsedSeconds: Math.max(1, Math.round(this.matchElapsedSeconds)),
       countdownValue: Math.max(0, Math.ceil(this.countdownTimer)),
       lastGoalScorer: this.lastGoalScorer,
       lastGoalSpeedKmh: this.lastGoalSpeedKmh,
@@ -497,13 +763,28 @@ export class AirHockeyEngine {
       totalHits: this.physics.totalHits,
       puckSpeedKmh: this.physics.getPuckSpeedKmh(),
       winner: this.winner,
+      seriesWins1: this.seriesWins1,
+      seriesWins2: this.seriesWins2,
+      seriesRound: this.seriesRound,
+      seriesTargetWins: this.seriesTargetWins,
+      tournamentStageLabel: this.tournamentStageLabel,
+      activePowerUps: this.activePowerUps.map((p) => ({
+        ...p,
+        remainingSeconds: Math.max(0, Math.ceil(p.remainingSeconds)),
+      })),
+      goalShieldP1: this.physics.goalShield1,
+      goalShieldP2: this.physics.goalShield2,
+      bonusPuckActive: this.physics.bonusPuck.active,
     };
   }
 
   private pushHUD(force = false): void {
     const rem = Math.max(0, Math.ceil(this.remainingSeconds));
     const cd = Math.max(0, Math.ceil(this.countdownTimer));
-    const key = `${this.matchId}|${this.phase}|${this.score1}|${this.score2}|${rem}|${cd}|${this.lastGoalScorer}|${this.winner}`;
+    const pwrKey = this.activePowerUps
+      .map((p) => `${p.type}:${p.owner}:${Math.ceil(p.remainingSeconds)}`)
+      .join(',');
+    const key = `${this.matchId}|${this.phase}|${this.score1}|${this.score2}|${rem}|${cd}|${this.lastGoalScorer}|${this.winner}|${pwrKey}`;
     if (!force && key === this.lastHudEmitKey) return;
     this.lastHudEmitKey = key;
     this.callbacks.onHUDUpdate(this.buildHUDState());
@@ -517,6 +798,9 @@ export class AirHockeyEngine {
     this.cameraController.setAspect(width, height);
     this.renderer.setSize(width, height, false);
     this.input.updateRect();
+    this.input.setLandscapeView(
+      this.cameraController.isLandscapeActive(this.prefs.tableOrientation)
+    );
   }
 
   private tick = (): void => {
@@ -540,20 +824,21 @@ export class AirHockeyEngine {
       if (this.countdownTimer <= 0) {
         this.phase = 'active';
         this.audio.playCountdown(true);
+        this.audio.playMatchStart();
         this.input.setActive(true);
         this.syncPaddleControlModes();
         this.pushHUD(true);
       }
     } else if (this.phase === 'active') {
+      this.matchElapsedSeconds += dt;
       if (this.hitstopTimer > 0) {
         this.hitstopTimer = Math.max(0, this.hitstopTimer - dt);
       } else {
         this.input.updateKeyboard(dt);
-        if (this.config.mode === 'vs_ai') {
-          this.ai.update(this.physics, dt);
-        } else if (this.config.mode === 'practice' && this.practiceSparring) {
+        if (this.isAIEnabledMode()) {
           this.ai.update(this.physics, dt);
         }
+        this.updatePowerUps(dt);
         this.physics.step(dt);
       }
 
@@ -565,7 +850,6 @@ export class AirHockeyEngine {
         }
       }
 
-      // Only emit React HUD state updates on discrete second/score/phase changes (zero idle re-renders)
       this.pushHUD(false);
 
       this.speedSyncAccumulator += dt;
@@ -588,7 +872,13 @@ export class AirHockeyEngine {
             this.physics.resetPositions('center');
             this.physics.launchPracticePuck(this.config.practiceSpeedMultiplier);
           } else {
+            const hadDoublePuck = this.activePowerUps.some(
+              (item) => item.type === 'double_puck'
+            );
             this.physics.resetPositions(this.pendingServe);
+            if (hadDoublePuck) {
+              this.physics.activateBonusPuck();
+            }
           }
           this.phase = 'active';
           this.input.setActive(true);
@@ -605,6 +895,9 @@ export class AirHockeyEngine {
     const puckSpd = Math.hypot(p.vx, p.vz);
     this.sceneObjects.puckGlowMat.emissiveIntensity =
       0.55 + Math.min(0.95, puckSpd * 0.16);
+
+    const bp = this.physics.bonusPuck;
+    this.sceneObjects.setBonusPuckState(bp.active, bp.x, bp.z, bp.spin, dt);
 
     this.sceneObjects.paddle1Group.position.set(
       this.physics.p1.x,
@@ -638,6 +931,7 @@ export class AirHockeyEngine {
       puckX: p.x,
       puckZ: p.z,
       cameraView: this.prefs.cameraView,
+      tableOrientation: this.prefs.tableOrientation,
       reducedMotion: this.prefs.reducedMotion,
     });
 

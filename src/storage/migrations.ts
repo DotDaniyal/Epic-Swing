@@ -38,6 +38,7 @@ export const DEFAULT_MATCH_CONFIG: MatchConfig = {
   durationSeconds: 180,
   customDurationMinutes: 4,
   winningScore: 7,
+  powerUpsEnabled: false,
   player1Name: 'Player 1',
   player2Name: 'Player 2',
   practiceSpeedMultiplier: 1.0,
@@ -52,6 +53,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   vibrationEnabled: true,
   quality: 'auto',
   cameraView: 'broadcast',
+  tableOrientation: 'auto',
   reducedMotion: getDefaultReducedMotion(),
   mirrorTopScoreOnMobile: true,
   introPreference: 'auto',
@@ -68,6 +70,8 @@ export const DEFAULT_STATISTICS: PlayerStatistics = {
   aiLosses: 0,
   totalGoalsScored: 0,
   bestSingleMatchScore: 0,
+  longestWinStreak: 0,
+  bestMatchTimeSeconds: null,
   fastestShotKmh: 0,
   recentMatches: [],
 };
@@ -272,6 +276,7 @@ export function validateParsedSaveData(
 
   const rawDiff = parsed.matchConfig?.difficulty;
   const validDiff =
+    rawDiff === 'beginner' ||
     rawDiff === 'easy' ||
     rawDiff === 'medium' ||
     rawDiff === 'hard' ||
@@ -285,6 +290,7 @@ export function validateParsedSaveData(
     difficulty: validDiff,
     gameplaySpeed: validSpeed,
     winningScore: validWinScore,
+    powerUpsEnabled: Boolean(parsed.matchConfig?.powerUpsEnabled),
     player1Name: p1.name,
     player2Name: p2.name,
   };
@@ -295,17 +301,33 @@ export function validateParsedSaveData(
       ? Math.max(0.75, Math.min(1.35, rawSens))
       : DEFAULT_PREFERENCES.touchSensitivity;
 
+  const rawOrient = parsed.preferences?.tableOrientation;
+  const validOrient =
+    rawOrient === 'auto' || rawOrient === 'vertical' || rawOrient === 'landscape'
+      ? rawOrient
+      : DEFAULT_PREFERENCES.tableOrientation;
+
   return {
     version: CURRENT_SAVE_VERSION,
     matchConfig,
     preferences: {
       ...DEFAULT_PREFERENCES,
       ...(parsed.preferences || {}),
+      tableOrientation: validOrient,
       touchSensitivity: clampedSens,
     },
     statistics: {
       ...DEFAULT_STATISTICS,
       ...(parsed.statistics || {}),
+      longestWinStreak: Math.max(
+        p1.bestWinStreak,
+        Math.floor(parsed.statistics?.longestWinStreak ?? 0)
+      ),
+      bestMatchTimeSeconds:
+        typeof parsed.statistics?.bestMatchTimeSeconds === 'number' &&
+        parsed.statistics.bestMatchTimeSeconds > 0
+          ? parsed.statistics.bestMatchTimeSeconds
+          : null,
       recentMatches: Array.isArray(parsed.statistics?.recentMatches)
         ? parsed.statistics!.recentMatches.slice(0, 25)
         : [],

@@ -266,5 +266,116 @@ export function runPhysicsTests(): number {
     passed++;
   }
 
+  // 10. Goal shield blocks goal at mouth, reflects puck, and fires onShieldHit
+  {
+    let shieldDefender: 1 | 2 | null = null;
+    let goalScored = false;
+    const physics = new AirHockeyPhysics({
+      onShieldHit: (defender) => {
+        shieldDefender = defender;
+      },
+      onGoal: () => {
+        goalScored = true;
+      },
+    });
+    physics.resetPositions('center');
+    physics.snapPaddleTo(2, 0.35, -0.7);
+    physics.goalShield2 = true;
+    physics.puck.x = 0;
+    physics.puck.z = -HALF_LENGTH + PUCK_RADIUS + 0.03;
+    physics.puck.vx = 0;
+    physics.puck.vz = -3.0;
+
+    for (let i = 0; i < 6; i++) {
+      physics.step(1 / 60);
+    }
+
+    assert.equal(shieldDefender, 2, 'P2 goal shield intercepted incoming top-goal shot');
+    assert.equal(goalScored, false, 'Shielded goal prevents scoring');
+    assert.ok(physics.puck.vz > 0, 'Puck rebounds forward off goal shield');
+
+    physics.resetPowerUpModifiers();
+    assert.equal(physics.goalShield2, false);
+    passed++;
+  }
+
+  // 11. Paddle radius scale clamping, puckTimeScale slow-motion, and strikeBoost
+  {
+    const physics = new AirHockeyPhysics();
+    physics.setPaddleRadiusScale(1, 1.32);
+    assert.ok(
+      Math.abs(physics.p1.radius - PADDLE_RADIUS * 1.32) < 1e-6,
+      'Larger striker power-up scales paddle radius cleanly'
+    );
+    physics.setPaddleRadiusScale(1, 5.0);
+    assert.ok(
+      Math.abs(physics.p1.radius - PADDLE_RADIUS * 1.45) < 1e-6,
+      'Paddle radius scale clamps safely to max 1.45x'
+    );
+
+    // Slow-motion puckTimeScale halves puck travel vs normal speed
+    const normalPhys = new AirHockeyPhysics();
+    normalPhys.resetPositions('center');
+    normalPhys.puck.vx = 2.0;
+    normalPhys.step(1 / 60);
+
+    const slowPhys = new AirHockeyPhysics();
+    slowPhys.resetPositions('center');
+    slowPhys.puckTimeScale = 0.55;
+    slowPhys.puck.vx = 2.0;
+    slowPhys.step(1 / 60);
+
+    assert.ok(
+      slowPhys.puck.x < normalPhys.puck.x * 0.65,
+      'puckTimeScale = 0.55 reduces puck displacement cleanly'
+    );
+
+    physics.strikeBoost1 = 1.28;
+    assert.equal(physics.strikeBoost1, 1.28);
+    passed++;
+  }
+
+  // 12. Bonus Double Puck collision & goal scoring detection
+  {
+    let scorer: 1 | 2 | null = null;
+    const physics = new AirHockeyPhysics({
+      onGoal: (s) => {
+        scorer = s;
+      },
+    });
+    physics.resetPositions('center');
+    physics.activateBonusPuck();
+    assert.equal(physics.bonusPuck.active, true);
+
+    // Elastic puck-to-puck collision near center
+    physics.puck.x = -0.025;
+    physics.puck.z = 0;
+    physics.puck.vx = 2.0;
+    physics.puck.vz = 0;
+    physics.bonusPuck.x = 0.025;
+    physics.bonusPuck.z = 0;
+    physics.bonusPuck.vx = -2.0;
+    physics.bonusPuck.vz = 0;
+    physics.step(1 / 60);
+
+    assert.ok(physics.puck.vx < 0 && physics.bonusPuck.vx > 0, 'Main and bonus pucks bounce apart');
+
+    // Bonus puck entering top goal awards score to P1
+    physics.puck.x = 0.2;
+    physics.puck.z = 0.2;
+    physics.puck.vx = 0;
+    physics.puck.vz = 0;
+    physics.bonusPuck.x = 0;
+    physics.bonusPuck.z = -HALF_LENGTH + 0.03;
+    physics.bonusPuck.vx = 0;
+    physics.bonusPuck.vz = -4.0;
+    for (let i = 0; i < 10; i++) {
+      physics.step(1 / 60);
+    }
+    assert.equal(scorer, 1, 'Bonus puck entering top goal awards point to P1');
+    passed++;
+  }
+
   return passed;
 }
+

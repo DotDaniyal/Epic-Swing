@@ -41,19 +41,7 @@ export const GAMEPLAY_SPEED_SCALES: Record<GameplaySpeedPreset, number> = {
   fast: 1.26,
 };
 
-/**
- * Computes device-aware striker collision/visual radius so small phones gain
- * extra finger comfort without oversized strikers on tablets/desktops.
- */
-export function computeDeviceStrikerRadius(viewportMinPx: number): number {
-  if (!Number.isFinite(viewportMinPx) || viewportMinPx <= 0) {
-    return PADDLE_RADIUS;
-  }
-  if (viewportMinPx <= 390) return PADDLE_RADIUS * 1.05; // ~0.0966m
-  if (viewportMinPx <= 520) return PADDLE_RADIUS * 1.02; // ~0.0938m
-  if (viewportMinPx >= 900) return PADDLE_RADIUS * 0.96; // ~0.0883m
-  return PADDLE_RADIUS;
-}
+export const GOAL_POST_RADIUS = 0.014;
 
 // Visual speed scale: 1 m/s -> ~18 km/h arcade display readout
 export const SPEED_TO_KMH = 18.0;

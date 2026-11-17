@@ -1,6 +1,12 @@
-export type GameMode = 'two_player' | 'vs_ai' | 'practice';
+export type GameMode =
+  | 'two_player'
+  | 'vs_ai'
+  | 'practice'
+  | 'time_challenge'
+  | 'best_of_three'
+  | 'tournament';
 
-export type AIDifficulty = 'easy' | 'medium' | 'hard' | 'expert';
+export type AIDifficulty = 'beginner' | 'easy' | 'medium' | 'hard' | 'expert';
 
 export type GameplaySpeedPreset = 'slow' | 'normal' | 'fast';
 
@@ -8,7 +14,22 @@ export type QualityPreset = 'auto' | 'high' | 'balanced' | 'low';
 
 export type CameraViewMode = 'broadcast' | 'top_down';
 
+export type TableOrientationMode = 'auto' | 'vertical' | 'landscape';
+
 export type IntroPreference = 'auto' | 'skip';
+
+export type PowerUpType =
+  | 'speed_boost'
+  | 'larger_striker'
+  | 'slow_motion'
+  | 'double_puck'
+  | 'goal_shield';
+
+export interface ActivePowerUpState {
+  type: PowerUpType;
+  owner: 1 | 2 | 'both';
+  remainingSeconds: number;
+}
 
 export type ScreenId =
   | 'loading'
@@ -176,6 +197,7 @@ export interface MatchConfig {
   durationSeconds: number;
   customDurationMinutes: number;
   winningScore: number; // 0 = timer only, > 0 = first to N goals
+  powerUpsEnabled: boolean;
   player1Name: string;
   player2Name: string;
   practiceSpeedMultiplier: number;
@@ -190,6 +212,7 @@ export interface UserPreferences {
   vibrationEnabled: boolean;
   quality: QualityPreset;
   cameraView: CameraViewMode;
+  tableOrientation: TableOrientationMode;
   reducedMotion: boolean;
   mirrorTopScoreOnMobile: boolean;
   introPreference: IntroPreference;
@@ -207,6 +230,7 @@ export interface MatchRecord {
   score1: number;
   score2: number;
   durationSeconds: number;
+  elapsedSeconds?: number;
   winner: 'p1' | 'p2' | 'draw';
   topSpeedKmh: number;
   p1CoinsEarned?: number;
@@ -222,6 +246,8 @@ export interface PlayerStatistics {
   aiLosses: number;
   totalGoalsScored: number;
   bestSingleMatchScore: number;
+  longestWinStreak: number;
+  bestMatchTimeSeconds: number | null;
   fastestShotKmh: number;
   recentMatches: MatchRecord[];
 }
@@ -244,6 +270,7 @@ export interface LiveMatchHUDState {
   score1: number;
   score2: number;
   remainingSeconds: number;
+  elapsedSeconds: number;
   countdownValue: number; // 3, 2, 1, 0 (GO)
   lastGoalScorer: 'p1' | 'p2' | null;
   lastGoalSpeedKmh: number;
@@ -251,6 +278,15 @@ export interface LiveMatchHUDState {
   totalHits: number;
   puckSpeedKmh: number;
   winner: 'p1' | 'p2' | 'draw' | null;
+  seriesWins1: number;
+  seriesWins2: number;
+  seriesRound: number;
+  seriesTargetWins: number;
+  tournamentStageLabel: string | null;
+  activePowerUps: ActivePowerUpState[];
+  goalShieldP1: boolean;
+  goalShieldP2: boolean;
+  bonusPuckActive: boolean;
 }
 
 export interface StoreCatalogItem<TId extends string = string> {

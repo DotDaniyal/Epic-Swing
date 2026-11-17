@@ -36,11 +36,14 @@ export class ArenaVFX {
   private trailMat: THREE.MeshBasicMaterial;
   private trailHistory: Array<{ x: number; z: number; speed: number }> = [];
   private trailAccumulator = 0;
+  private hasTrailRendered = false;
 
   private readonly dummy = new THREE.Object3D();
   private readonly colorCyan = new THREE.Color(COLORS.p1CyanBright);
   private readonly colorOrange = new THREE.Color(COLORS.p2OrangeBright);
   private readonly colorWhite = new THREE.Color(0xf8fafc);
+  private readonly colorPowerUp = new THREE.Color(0xfacc15);
+  private readonly colorShield = new THREE.Color(0x34d399);
   private readonly colorGoalFx = new THREE.Color(COLORS.p1CyanBright);
 
   private trailEffectId: TrailEffectId = 'silver_stream';
@@ -161,7 +164,7 @@ export class ArenaVFX {
     x: number,
     z: number,
     intensity: number,
-    accent: 'p1' | 'p2' | 'wall' | 'goal',
+    accent: 'p1' | 'p2' | 'wall' | 'goal' | 'powerup' | 'shield',
     ringScale = 2.4
   ): void {
     if (!this.enabled || this.reducedMotion) return;
@@ -171,6 +174,10 @@ export class ArenaVFX {
         ? this.colorCyan
         : accent === 'p2'
         ? this.colorOrange
+        : accent === 'powerup'
+        ? this.colorPowerUp
+        : accent === 'shield'
+        ? this.colorShield
         : accent === 'goal'
         ? this.colorGoalFx
         : this.colorWhite;
@@ -244,6 +251,8 @@ export class ArenaVFX {
 
   public clearTrail(): void {
     this.trailHistory.length = 0;
+    if (!this.hasTrailRendered) return;
+    this.hasTrailRendered = false;
     for (let i = 0; i < TRAIL_POINTS; i++) {
       this.dummy.position.set(0, -10, 0);
       this.dummy.scale.setScalar(0);
@@ -302,13 +311,31 @@ export class ArenaVFX {
       return;
     }
     this.trailMesh.visible = true;
+    if (puckSpeed < 1.05 && this.trailHistory.length === 0) {
+      if (this.hasTrailRendered) {
+        this.clearTrail();
+      }
+      return;
+    }
+
     this.trailAccumulator += dt;
     if (this.trailAccumulator >= 0.012) {
       this.trailAccumulator = 0;
-      this.trailHistory.unshift({ x: puckX, z: puckZ, speed: puckSpeed });
-      if (this.trailHistory.length > TRAIL_POINTS) {
+      if (puckSpeed >= 1.05) {
+        this.trailHistory.unshift({ x: puckX, z: puckZ, speed: puckSpeed });
+        if (this.trailHistory.length > TRAIL_POINTS) {
+          this.trailHistory.pop();
+        }
+      } else if (this.trailHistory.length > 0) {
         this.trailHistory.pop();
       }
+    }
+
+    if (this.trailHistory.length === 0) {
+      if (this.hasTrailRendered) {
+        this.clearTrail();
+      }
+      return;
     }
 
     const scaleBoost = this.trailEffectId === 'silver_stream' ? 0.92 : 1.08;
@@ -328,6 +355,7 @@ export class ArenaVFX {
       this.dummy.updateMatrix();
       this.trailMesh.setMatrixAt(i, this.dummy.matrix);
     }
+    this.hasTrailRendered = true;
     this.trailMesh.instanceMatrix.needsUpdate = true;
   }
 

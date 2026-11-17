@@ -19,6 +19,14 @@ export interface AIProfile {
 }
 
 export const AI_DIFFICULTY_PROFILES: Record<AIDifficulty, AIProfile> = {
+  beginner: {
+    reactionInterval: 0.24,
+    maxSpeedFactor: 0.36,
+    predictionTime: 0.04,
+    aggression: 0.22,
+    aimJitter: 0.11,
+    steeringDamp: 7.5,
+  },
   easy: {
     reactionInterval: 0.15,
     maxSpeedFactor: 0.52,
@@ -126,7 +134,7 @@ export class HockeyAI {
   }
 
   private computeDecision(physics: AirHockeyPhysics, profile: AIProfile): void {
-    const puck = physics.puck;
+    const puck = physics.getPrimaryThreatPuck();
     const p2 = physics.p2;
     const p1 = physics.p1;
 

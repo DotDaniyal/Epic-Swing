@@ -19,7 +19,11 @@ import { MatchSetupWizard } from '@/features/main-menu/MatchSetupWizard';
 import { ProfileScreen } from '@/features/player-profiles/ProfileScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { StatsScreen } from '@/features/statistics/StatsScreen';
-import type { AirHockeyEngine, CinematicStage } from '@/game/engine/AirHockeyEngine';
+import type {
+  AirHockeyEngine,
+  CinematicStage,
+  SeriesMatchMeta,
+} from '@/game/engine/AirHockeyEngine';
 import {
   ensureDailyChallengesCurrent,
   loadSaveData,
@@ -28,6 +32,7 @@ import {
   saveAllData,
 } from '@/storage';
 import type {
+  AIDifficulty,
   EpicSwingSaveData,
   GameMode,
   LiveMatchHUDState,
@@ -40,12 +45,32 @@ import type {
   UserPreferences,
 } from '@/types/game';
 
+interface SeriesRunState {
+  mode: 'best_of_three' | 'tournament';
+  round: number;
+  wins1: number;
+  wins2: number;
+  targetWins: number;
+  tournamentStageIndex: number;
+}
+
+const TOURNAMENT_STAGES: ReadonlyArray<{
+  round: number;
+  label: string;
+  difficulty: AIDifficulty;
+}> = [
+  { round: 1, label: 'Quarterfinal', difficulty: 'easy' },
+  { round: 2, label: 'Semifinal', difficulty: 'hard' },
+  { round: 3, label: 'Championship Final', difficulty: 'expert' },
+];
+
 const INITIAL_HUD: LiveMatchHUDState = {
   matchId: '',
   phase: 'idle',
   score1: 0,
   score2: 0,
   remainingSeconds: 180,
+  elapsedSeconds: 0,
   countdownValue: 3,
   lastGoalScorer: null,
   lastGoalSpeedKmh: 0,
@@ -53,6 +78,15 @@ const INITIAL_HUD: LiveMatchHUDState = {
   totalHits: 0,
   puckSpeedKmh: 0,
   winner: null,
+  seriesWins1: 0,
+  seriesWins2: 0,
+  seriesRound: 1,
+  seriesTargetWins: 1,
+  tournamentStageLabel: null,
+  activePowerUps: [],
+  goalShieldP1: false,
+  goalShieldP2: false,
+  bonusPuckActive: false,
 };
 
 export default function App() {
@@ -70,8 +104,13 @@ export default function App() {
   const [goalScoredInDemo, setGoalScoredInDemo] = useState(false);
   const [lastMatchReward, setLastMatchReward] =
     useState<MatchRewardBreakdown | null>(null);
+  const [seriesOutcome, setSeriesOutcome] = useState<{
+    summaryLabel: string | null;
+    nextLabel: string | null;
+  }>({ summaryLabel: null, nextLabel: null });
 
   const engineRef = useRef<AirHockeyEngine | null>(null);
+  const seriesStateRef = useRef<SeriesRunState | null>(null);
   const saveDataRef = useRef(saveData);
   saveDataRef.current = saveData;
 
@@ -334,10 +373,45 @@ export default function App() {
   }, []);
 
   const startMatchWithConfig = useCallback(
-    (targetConfig: MatchConfig) => {
+    (targetConfig: MatchConfig, existingSeries?: SeriesRunState | null) => {
       const curProfiles = saveDataRef.current.profiles;
+      let nextSeries: SeriesRunState | null = null;
+      let effectiveDifficulty = targetConfig.difficulty;
+
+      if (existingSeries) {
+        nextSeries = existingSeries;
+        if (nextSeries.mode === 'tournament') {
+          effectiveDifficulty =
+            TOURNAMENT_STAGES[nextSeries.tournamentStageIndex]?.difficulty ??
+            targetConfig.difficulty;
+        }
+      } else if (targetConfig.mode === 'best_of_three') {
+        nextSeries = {
+          mode: 'best_of_three',
+          round: 1,
+          wins1: 0,
+          wins2: 0,
+          targetWins: 2,
+          tournamentStageIndex: 0,
+        };
+      } else if (targetConfig.mode === 'tournament') {
+        effectiveDifficulty = TOURNAMENT_STAGES[0].difficulty;
+        nextSeries = {
+          mode: 'tournament',
+          round: 1,
+          wins1: 0,
+          wins2: 0,
+          targetWins: TOURNAMENT_STAGES.length,
+          tournamentStageIndex: 0,
+        };
+      }
+
+      seriesStateRef.current = nextSeries;
+      setSeriesOutcome({ summaryLabel: null, nextLabel: null });
+
       const normalized: MatchConfig = {
         ...targetConfig,
+        difficulty: effectiveDifficulty,
         player1Name:
           targetConfig.player1Name.trim() || curProfiles.p1.name || 'Player 1',
         player2Name:
@@ -353,7 +427,22 @@ export default function App() {
       updateConfig(normalized);
       setScreen('playing');
       engineRef.current?.applyCosmetics(curProfiles.p1, curProfiles.p2);
-      engineRef.current?.startMatch(normalized);
+
+      const seriesMeta: SeriesMatchMeta | undefined = nextSeries
+        ? {
+            seriesWins1: nextSeries.wins1,
+            seriesWins2: nextSeries.wins2,
+            seriesRound: nextSeries.round,
+            seriesTargetWins: nextSeries.targetWins,
+            tournamentStageLabel:
+              nextSeries.mode === 'tournament'
+                ? TOURNAMENT_STAGES[nextSeries.tournamentStageIndex]?.label ??
+                  null
+                : null,
+          }
+        : undefined;
+
+      engineRef.current?.startMatch(normalized, seriesMeta);
     },
     [practiceSparring, updateConfig]
   );
@@ -368,6 +457,15 @@ export default function App() {
     [startMatchWithConfig]
   );
 
+  const handleNextSeriesMatch = useCallback(() => {
+    const activeSeries = seriesStateRef.current;
+    if (!activeSeries) {
+      startMatchWithConfig(saveDataRef.current.matchConfig);
+      return;
+    }
+    startMatchWithConfig(saveDataRef.current.matchConfig, activeSeries);
+  }, [startMatchWithConfig]);
+
   const handlePause = useCallback(() => {
     engineRef.current?.pauseMatch();
     setScreen('paused');
@@ -379,6 +477,8 @@ export default function App() {
   }, []);
 
   const handleMainMenu = useCallback(() => {
+    seriesStateRef.current = null;
+    setSeriesOutcome({ summaryLabel: null, nextLabel: null });
     engineRef.current?.enterIdleMenu();
     setScreen('menu');
   }, []);
@@ -398,14 +498,18 @@ export default function App() {
     setHud(finalHud);
     const activeSave = saveDataRef.current;
     const activeCfg = activeSave.matchConfig;
+    const isAIMode =
+      activeCfg.mode === 'vs_ai' ||
+      activeCfg.mode === 'time_challenge' ||
+      activeCfg.mode === 'best_of_three' ||
+      activeCfg.mode === 'tournament';
 
     if (activeCfg.mode !== 'practice' && finalHud.winner) {
       const p1Name =
         activeSave.profiles.p1.name || activeCfg.player1Name || 'Player 1';
-      const p2Display =
-        activeCfg.mode === 'vs_ai'
-          ? `Arena AI (${activeCfg.difficulty.toUpperCase()})`
-          : activeSave.profiles.p2.name || activeCfg.player2Name || 'Player 2';
+      const p2Display = isAIMode
+        ? `Arena AI (${activeCfg.difficulty.toUpperCase()})`
+        : activeSave.profiles.p2.name || activeCfg.player2Name || 'Player 2';
 
       const matchId =
         finalHud.matchId ||
@@ -415,13 +519,13 @@ export default function App() {
         id: matchId,
         timestamp: Date.now(),
         mode: activeCfg.mode,
-        difficulty:
-          activeCfg.mode === 'vs_ai' ? activeCfg.difficulty : undefined,
+        difficulty: isAIMode ? activeCfg.difficulty : undefined,
         player1Name: p1Name,
         player2Name: p2Display,
         score1: finalHud.score1,
         score2: finalHud.score2,
         durationSeconds: activeCfg.durationSeconds,
+        elapsedSeconds: Math.round(finalHud.elapsedSeconds),
         winner: finalHud.winner,
         topSpeedKmh: finalHud.topSpeedKmh,
       });
@@ -432,8 +536,84 @@ export default function App() {
       if (reward.p1TotalCoins > 0) {
         engineRef.current?.playCoinEarned();
       }
+
+      // Advance Best of Three or Tournament series state
+      const activeSeries = seriesStateRef.current;
+      if (activeSeries && activeSeries.mode === 'best_of_three') {
+        const wins1 = activeSeries.wins1 + (finalHud.winner === 'p1' ? 1 : 0);
+        const wins2 = activeSeries.wins2 + (finalHud.winner === 'p2' ? 1 : 0);
+        if (wins1 >= activeSeries.targetWins) {
+          seriesStateRef.current = null;
+          setSeriesOutcome({
+            summaryLabel: `Best of Three · Series Won ${wins1}–${wins2}`,
+            nextLabel: null,
+          });
+        } else if (wins2 >= activeSeries.targetWins) {
+          seriesStateRef.current = null;
+          setSeriesOutcome({
+            summaryLabel: `Best of Three · Series Lost ${wins1}–${wins2}`,
+            nextLabel: null,
+          });
+        } else {
+          const nextRound =
+            finalHud.winner === 'draw'
+              ? activeSeries.round
+              : activeSeries.round + 1;
+          seriesStateRef.current = {
+            ...activeSeries,
+            wins1,
+            wins2,
+            round: nextRound,
+          };
+          setSeriesOutcome({
+            summaryLabel: `Best of Three · Series ${wins1}–${wins2}`,
+            nextLabel:
+              finalHud.winner === 'draw'
+                ? 'REPLAY ROUND'
+                : `ROUND ${nextRound}`,
+          });
+        }
+      } else if (activeSeries && activeSeries.mode === 'tournament') {
+        const stage = TOURNAMENT_STAGES[activeSeries.tournamentStageIndex];
+        if (finalHud.winner === 'p1') {
+          if (activeSeries.tournamentStageIndex < TOURNAMENT_STAGES.length - 1) {
+            const nextIdx = activeSeries.tournamentStageIndex + 1;
+            const nextStage = TOURNAMENT_STAGES[nextIdx];
+            seriesStateRef.current = {
+              ...activeSeries,
+              wins1: activeSeries.wins1 + 1,
+              round: nextStage.round,
+              tournamentStageIndex: nextIdx,
+            };
+            setSeriesOutcome({
+              summaryLabel: `${stage.label} Cleared!`,
+              nextLabel: `NEXT: ${nextStage.label.toUpperCase()}`,
+            });
+          } else {
+            seriesStateRef.current = null;
+            setSeriesOutcome({
+              summaryLabel: 'Arcade Tournament Champion!',
+              nextLabel: null,
+            });
+          }
+        } else if (finalHud.winner === 'draw') {
+          setSeriesOutcome({
+            summaryLabel: `${stage.label} Tied · Rematch`,
+            nextLabel: `REMATCH ${stage.label.toUpperCase()}`,
+          });
+        } else {
+          seriesStateRef.current = null;
+          setSeriesOutcome({
+            summaryLabel: `Eliminated in ${stage.label}`,
+            nextLabel: null,
+          });
+        }
+      } else {
+        setSeriesOutcome({ summaryLabel: null, nextLabel: null });
+      }
     } else {
       setLastMatchReward(null);
+      setSeriesOutcome({ summaryLabel: null, nextLabel: null });
     }
 
     setScreen('results');
@@ -647,7 +827,9 @@ export default function App() {
           muteAll={prefs.muteAll}
           musicEnabled={prefs.musicEnabled}
           onResume={handleResume}
-          onRestart={() => startMatchWithConfig(config)}
+          onRestart={() =>
+            startMatchWithConfig(config, seriesStateRef.current ?? undefined)
+          }
           onToggleMute={handleToggleMute}
           onToggleMusic={handleToggleMusic}
           onOpenSettings={() => handleOpenSettings('paused')}
@@ -664,6 +846,11 @@ export default function App() {
           profiles={profiles}
           reward={lastMatchReward}
           reducedMotion={prefs.reducedMotion}
+          seriesSummaryLabel={seriesOutcome.summaryLabel}
+          seriesNextLabel={seriesOutcome.nextLabel}
+          onNextSeriesMatch={
+            seriesOutcome.nextLabel ? handleNextSeriesMatch : undefined
+          }
           onPlayAgain={() => startMatchWithConfig(config)}
           onNavigate={setScreen}
           onMainMenu={handleMainMenu}
@@ -675,6 +862,7 @@ export default function App() {
       {screen === 'statistics' && (
         <StatsScreen
           stats={stats}
+          profiles={profiles}
           onBack={() => setScreen('menu')}
           onResetStats={() =>
             commitSaveData((prev) => resetAllStatisticsOnly(prev))

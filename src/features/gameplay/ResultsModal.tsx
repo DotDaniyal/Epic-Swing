@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  ArrowRight,
   Award,
   Coins,
   Home,
@@ -18,7 +19,7 @@ import type {
   PlayerIdentity,
   ScreenId,
 } from '@/types/game';
-import { formatDurationLabel } from '@/utils/format';
+import { formatClock, formatDurationLabel } from '@/utils/format';
 
 interface ResultsModalProps {
   hud: LiveMatchHUDState;
@@ -26,6 +27,9 @@ interface ResultsModalProps {
   profiles: { p1: PlayerIdentity; p2: PlayerIdentity };
   reward: MatchRewardBreakdown | null;
   reducedMotion: boolean;
+  seriesSummaryLabel?: string | null;
+  seriesNextLabel?: string | null;
+  onNextSeriesMatch?: () => void;
   onPlayAgain: () => void;
   onNavigate: (screen: ScreenId) => void;
   onMainMenu: () => void;
@@ -38,6 +42,9 @@ export const ResultsModal: React.FC<ResultsModalProps> = ({
   profiles,
   reward,
   reducedMotion,
+  seriesSummaryLabel,
+  seriesNextLabel,
+  onNextSeriesMatch,
   onPlayAgain,
   onNavigate,
   onMainMenu,
@@ -60,13 +67,18 @@ export const ResultsModal: React.FC<ResultsModalProps> = ({
     };
   }, [earnedTotal, reducedMotion]);
 
+  const isAIMode =
+    config.mode === 'vs_ai' ||
+    config.mode === 'time_challenge' ||
+    config.mode === 'best_of_three' ||
+    config.mode === 'tournament';
+
   const p1Name = profiles.p1.name || config.player1Name || 'Player 1';
-  const p2Name =
-    config.mode === 'vs_ai'
-      ? `Arena AI (${config.difficulty.toUpperCase()})`
-      : config.mode === 'practice'
-      ? 'Practice Drill'
-      : profiles.p2.name || config.player2Name || 'Player 2';
+  const p2Name = isAIMode
+    ? `Arena AI (${config.difficulty.toUpperCase()})`
+    : config.mode === 'practice'
+    ? 'Practice Drill'
+    : profiles.p2.name || config.player2Name || 'Player 2';
 
   const isDraw = hud.winner === 'draw';
   const winnerProfile = hud.winner === 'p2' ? profiles.p2 : profiles.p1;
@@ -82,11 +94,12 @@ export const ResultsModal: React.FC<ResultsModalProps> = ({
     ? 'text-cyan-300'
     : 'text-orange-400';
 
-  const durationFormatted = formatDurationLabel(
-    config.durationSeconds,
-    config.mode === 'practice',
-    'Free Play'
-  );
+  const durationFormatted =
+    config.mode === 'practice'
+      ? 'Free Play'
+      : hud.elapsedSeconds > 0
+      ? formatClock(Math.round(hud.elapsedSeconds))
+      : formatDurationLabel(config.durationSeconds, false, 'Free Play');
 
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/82 p-3 sm:p-5 overflow-y-auto">
@@ -120,7 +133,8 @@ export const ResultsModal: React.FC<ResultsModalProps> = ({
           )}
 
           <p className="mt-3 text-xs font-bold uppercase tracking-widest text-slate-400">
-            {isDraw ? 'Tie Game · Overtime Ready' : 'Victory Celebration'}
+            {seriesSummaryLabel ||
+              (isDraw ? 'Tie Game · Overtime Ready' : 'Victory Celebration')}
           </p>
           <h2 className={`mt-1 font-display text-3xl font-extrabold ${accentClass}`}>
             {winnerTitle}
@@ -249,19 +263,33 @@ export const ResultsModal: React.FC<ResultsModalProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons: PLAY AGAIN | CUSTOMIZE | VISIT STORE | MAIN MENU */}
+        {/* Action Buttons: NEXT / PLAY AGAIN | CUSTOMIZE | VISIT STORE | MAIN MENU */}
         <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <button
-            type="button"
-            onClick={() => {
-              onButtonClick();
-              onPlayAgain();
-            }}
-            className="flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl bg-cyan-400 font-display text-xs sm:text-sm font-extrabold text-slate-950 hover:bg-cyan-300 cursor-pointer"
-          >
-            <RotateCcw className="w-4 h-4 shrink-0" />
-            <span>PLAY AGAIN</span>
-          </button>
+          {seriesNextLabel && onNextSeriesMatch ? (
+            <button
+              type="button"
+              onClick={() => {
+                onButtonClick();
+                onNextSeriesMatch();
+              }}
+              className="flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl bg-cyan-400 px-2 font-display text-xs sm:text-sm font-extrabold text-slate-950 hover:bg-cyan-300 cursor-pointer"
+            >
+              <span className="truncate">{seriesNextLabel}</span>
+              <ArrowRight className="w-4 h-4 shrink-0" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                onButtonClick();
+                onPlayAgain();
+              }}
+              className="flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl bg-cyan-400 font-display text-xs sm:text-sm font-extrabold text-slate-950 hover:bg-cyan-300 cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4 shrink-0" />
+              <span>PLAY AGAIN</span>
+            </button>
+          )}
 
           <button
             type="button"

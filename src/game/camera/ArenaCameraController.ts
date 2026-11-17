@@ -6,7 +6,11 @@ import {
   TABLE_WIDTH,
 } from '@/game/constants/arena';
 import type { CinematicStage } from '@/game/gameplay/CinematicChoreography';
-import type { CameraViewMode, MatchPhase } from '@/types/game';
+import type {
+  CameraViewMode,
+  MatchPhase,
+  TableOrientationMode,
+} from '@/types/game';
 
 export class ArenaCameraController {
   public readonly camera: THREE.PerspectiveCamera;
@@ -14,6 +18,7 @@ export class ArenaCameraController {
   private readonly targetCamPos = new THREE.Vector3(0, 3.6, 0.7);
   private readonly targetLookAt = new THREE.Vector3(0, SURFACE_Y, 0);
   private readonly currentLookAt = new THREE.Vector3(0, SURFACE_Y, 0);
+  private readonly targetUp = new THREE.Vector3(0, 1, 0);
 
   private camShake = 0;
   private menuOrbitAngle = 0;
@@ -27,7 +32,17 @@ export class ArenaCameraController {
     this.camera.updateProjectionMatrix();
   }
 
-  public snapToInitial(cameraView: CameraViewMode, reducedMotion: boolean): void {
+  public isLandscapeActive(tableOrientation: TableOrientationMode): boolean {
+    if (tableOrientation === 'landscape') return true;
+    if (tableOrientation === 'vertical') return false;
+    return (this.camera.aspect || 1) >= 1.25;
+  }
+
+  public snapToInitial(
+    cameraView: CameraViewMode,
+    tableOrientation: TableOrientationMode,
+    reducedMotion: boolean
+  ): void {
     this.computeTargets({
       dt: 0,
       phase: 'idle',
@@ -36,8 +51,10 @@ export class ArenaCameraController {
       puckX: 0,
       puckZ: 0,
       cameraView,
+      tableOrientation,
       reducedMotion,
     });
+    this.camera.up.copy(this.targetUp);
     this.camera.position.copy(this.targetCamPos);
     this.currentLookAt.copy(this.targetLookAt);
     this.camera.lookAt(this.currentLookAt);
@@ -59,11 +76,14 @@ export class ArenaCameraController {
     puckX: number;
     puckZ: number;
     cameraView: CameraViewMode;
+    tableOrientation: TableOrientationMode;
     reducedMotion: boolean;
   }): void {
     this.computeTargets(params);
 
     const camDamp = params.phase === 'cinematic' ? 3.8 : 6.5;
+    this.camera.up.lerp(this.targetUp, 1 - Math.exp(-camDamp * params.dt)).normalize();
+
     this.camera.position.x = THREE.MathUtils.damp(
       this.camera.position.x,
       this.targetCamPos.x,
@@ -122,6 +142,7 @@ export class ArenaCameraController {
     puckX: number;
     puckZ: number;
     cameraView: CameraViewMode;
+    tableOrientation: TableOrientationMode;
     reducedMotion: boolean;
   }): void {
     const aspect = this.camera.aspect || 1;
@@ -139,6 +160,7 @@ export class ArenaCameraController {
     const baseDist = Math.max(distV, distH);
 
     if (params.phase === 'cinematic') {
+      this.targetUp.set(0, 1, 0);
       if (params.cinematicStage === 'table_reveal') {
         const angle = -0.8 + params.cinematicTimer * 0.58;
         const r = Math.min(2.8, baseDist * 0.78);
@@ -167,6 +189,7 @@ export class ArenaCameraController {
     }
 
     if (params.phase === 'idle' || params.cinematicStage === 'menu_blend') {
+      this.targetUp.set(0, 1, 0);
       if (!params.reducedMotion) {
         this.menuOrbitAngle += params.dt * 0.18;
       }
@@ -182,10 +205,32 @@ export class ArenaCameraController {
       return;
     }
 
+    const useLandscape = this.isLandscapeActive(params.tableOrientation);
     const isTopDown = params.cameraView === 'top_down';
+
+    if (useLandscape) {
+      // Landscape framing: Player 1 (+Z) on Left side, Player 2 (-Z) on Right side; screen-up = -X
+      this.targetUp.set(-1, 0, 0);
+      const landDistV = (totalW * 0.5 * 1.12) / tanHalfFov;
+      const landDistH = (totalL * 0.5 * 1.045) / (tanHalfFov * aspect);
+      const landDist = Math.max(landDistV, landDistH);
+      const tiltDeg = isTopDown ? 0 : 7.5;
+      const tiltRad = THREE.MathUtils.degToRad(tiltDeg);
+      const lookXOffset = -0.025;
+      const effectiveDist = landDist / Math.max(0.94, Math.cos(tiltRad));
+
+      this.targetCamPos.set(
+        lookXOffset + Math.sin(tiltRad) * effectiveDist,
+        SURFACE_Y + Math.cos(tiltRad) * effectiveDist,
+        0
+      );
+      this.targetLookAt.set(lookXOffset, SURFACE_Y, 0);
+      return;
+    }
+
+    this.targetUp.set(0, 1, 0);
     const tiltDeg = isTopDown ? 0 : isPortrait ? 3.5 : 8.5;
     const tiltRad = THREE.MathUtils.degToRad(tiltDeg);
-    // Slight look-at offset keeps space under compact top scoreboard bar while filling bottom edge
     const lookZOffset = isPortrait ? -0.055 : -0.03;
     const effectiveDist = baseDist / Math.max(0.94, Math.cos(tiltRad));
 

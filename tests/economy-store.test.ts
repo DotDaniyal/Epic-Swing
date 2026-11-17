@@ -188,5 +188,53 @@ export function runEconomyAndStoreTests(): number {
     passed++;
   }
 
+  // 5. Tracks longestWinStreak, bestMatchTimeSeconds, and all AI game modes
+  {
+    let save = createDefaultSaveData();
+    const res1 = processCompletedMatchRewards(
+      save,
+      makeMatch({
+        id: 'tc-1',
+        mode: 'time_challenge',
+        winner: 'p1',
+        elapsedSeconds: 92,
+      })
+    );
+    save = res1.nextSave;
+    const res2 = processCompletedMatchRewards(
+      save,
+      makeMatch({
+        id: 'bo3-1',
+        mode: 'best_of_three',
+        winner: 'p1',
+        elapsedSeconds: 54,
+      })
+    );
+    save = res2.nextSave;
+    assert.equal(save.statistics.longestWinStreak, 2);
+    assert.equal(save.statistics.bestMatchTimeSeconds, 54);
+    assert.equal(save.statistics.aiWins, 2);
+
+    // Losing later resets active profile winStreak, but preserves longestWinStreak & bestMatchTimeSeconds
+    const res3 = processCompletedMatchRewards(
+      save,
+      makeMatch({
+        id: 'tour-1',
+        mode: 'tournament',
+        winner: 'p2',
+        score1: 2,
+        score2: 5,
+        elapsedSeconds: 40,
+      })
+    );
+    save = res3.nextSave;
+    assert.equal(save.profiles.p1.winStreak, 0);
+    assert.equal(save.statistics.longestWinStreak, 2);
+    assert.equal(save.statistics.bestMatchTimeSeconds, 54);
+    assert.equal(save.statistics.aiLosses, 1);
+    passed++;
+  }
+
   return passed;
 }
+

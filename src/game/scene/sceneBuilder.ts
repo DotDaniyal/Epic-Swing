@@ -50,6 +50,10 @@ export interface BuiltSceneObjects {
     colorId: StrikerColorId,
     customColorHex: string
   ) => void;
+  setPaddleVisualScale: (player: 1 | 2, scale: number) => void;
+  setBonusPuckState: (visible: boolean, x: number, z: number, spin: number, dt: number) => void;
+  setGoalShieldState: (p1Active: boolean, p2Active: boolean) => void;
+  setPowerUpOrbState: (visible: boolean, x: number, z: number, colorHex: number) => void;
   setTableTheme: (themeId: TableThemeId) => void;
   setPuckSkin: (skinId: PuckSkinId) => void;
   setArenaBackground: (bgId: ArenaBgId) => void;
@@ -561,6 +565,138 @@ export function buildArenaScene(
   setStrikerAppearance(1, 'neon_cyan', 'cyan', '#00D8F6');
   setStrikerAppearance(2, 'fiery_orange', 'orange', '#FF6B1A');
 
+  // === Bonus Second Puck (Double-Puck Power-Up) ===
+  const bonusPuckGroup = new THREE.Group();
+  bonusPuckGroup.visible = false;
+  bonusPuckGroup.position.set(0, SURFACE_Y, 0);
+  scene.add(bonusPuckGroup);
+
+  const bonusBody = new THREE.Mesh(
+    new THREE.CylinderGeometry(PUCK_RADIUS, PUCK_RADIUS, PUCK_HEIGHT, 32),
+    new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      roughness: 0.28,
+      metalness: 0.55,
+    })
+  );
+  bonusBody.position.y = PUCK_HEIGHT / 2 + 0.001;
+  bonusBody.castShadow = true;
+  bonusPuckGroup.add(bonusBody);
+
+  const bonusRingMat = new THREE.MeshStandardMaterial({
+    color: 0xa855f7,
+    emissive: 0xc084fc,
+    emissiveIntensity: 1.4,
+    roughness: 0.18,
+  });
+  const bonusRing = new THREE.Mesh(
+    new THREE.TorusGeometry(PUCK_RADIUS * 0.62, 0.0045, 12, 32),
+    bonusRingMat
+  );
+  bonusRing.rotation.x = Math.PI / 2;
+  bonusRing.position.y = PUCK_HEIGHT + 0.002;
+  bonusPuckGroup.add(bonusRing);
+
+  // === Goal Shield Energy Barriers ===
+  const shieldGeo = new THREE.BoxGeometry(GOAL_WIDTH - 0.015, 0.036, 0.012);
+  const shieldP1Mat = new THREE.MeshBasicMaterial({
+    color: 0x00e5ff,
+    transparent: true,
+    opacity: 0.68,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const goalShieldP1Mesh = new THREE.Mesh(shieldGeo, shieldP1Mat);
+  goalShieldP1Mesh.position.set(0, SURFACE_Y + 0.018, HALF_LENGTH - 0.006);
+  goalShieldP1Mesh.visible = false;
+
+  const shieldP2Mat = new THREE.MeshBasicMaterial({
+    color: 0xfb923c,
+    transparent: true,
+    opacity: 0.68,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const goalShieldP2Mesh = new THREE.Mesh(shieldGeo, shieldP2Mat);
+  goalShieldP2Mesh.position.set(0, SURFACE_Y + 0.018, -(HALF_LENGTH - 0.006));
+  goalShieldP2Mesh.visible = false;
+  tableGroup.add(goalShieldP1Mesh, goalShieldP2Mesh);
+
+  // === Collectible Power-Up Orb ===
+  const powerUpOrbGroup = new THREE.Group();
+  powerUpOrbGroup.visible = false;
+  powerUpOrbGroup.position.set(0, SURFACE_Y + 0.038, 0);
+  scene.add(powerUpOrbGroup);
+
+  const orbCoreMat = new THREE.MeshStandardMaterial({
+    color: 0xfacc15,
+    emissive: 0xfacc15,
+    emissiveIntensity: 1.4,
+    roughness: 0.15,
+    metalness: 0.5,
+  });
+  const orbCore = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.032, 0),
+    orbCoreMat
+  );
+  powerUpOrbGroup.add(orbCore);
+
+  const orbHaloMat = new THREE.MeshBasicMaterial({
+    color: 0xfacc15,
+    transparent: true,
+    opacity: 0.65,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const orbHalo = new THREE.Mesh(
+    new THREE.RingGeometry(0.044, 0.056, 32),
+    orbHaloMat
+  );
+  orbHalo.rotation.x = -Math.PI / 2;
+  orbHalo.position.y = -0.032;
+  powerUpOrbGroup.add(orbHalo);
+
+  const setPaddleVisualScale = (player: 1 | 2, scale: number) => {
+    const group = player === 1 ? paddle1Group : paddle2Group;
+    group.scale.set(scale, 1, scale);
+  };
+
+  const setBonusPuckState = (
+    visible: boolean,
+    x: number,
+    z: number,
+    spin: number,
+    dt: number
+  ) => {
+    bonusPuckGroup.visible = visible;
+    if (visible) {
+      bonusPuckGroup.position.set(x, SURFACE_Y, z);
+      bonusPuckGroup.rotation.y += spin * dt;
+    }
+  };
+
+  const setGoalShieldState = (p1Active: boolean, p2Active: boolean) => {
+    goalShieldP1Mesh.visible = p1Active;
+    goalShieldP2Mesh.visible = p2Active;
+  };
+
+  const setPowerUpOrbState = (
+    visible: boolean,
+    x: number,
+    z: number,
+    colorHex: number
+  ) => {
+    powerUpOrbGroup.visible = visible;
+    if (visible) {
+      powerUpOrbGroup.position.x = x;
+      powerUpOrbGroup.position.z = z;
+      orbCoreMat.color.setHex(colorHex);
+      orbCoreMat.emissive.setHex(colorHex);
+      orbHaloMat.color.setHex(colorHex);
+    }
+  };
+
   const setTableTheme = (themeId: TableThemeId) => {
     const theme = getTableThemeConfig(themeId);
     const canvas = textures.surfaceColor.image as HTMLCanvasElement;
@@ -629,6 +765,19 @@ export function buildArenaScene(
   const updateCosmetics = (elapsed: number, dt: number) => {
     striker1?.update(elapsed, dt);
     striker2?.update(elapsed, dt);
+    if (powerUpOrbGroup.visible) {
+      orbCore.rotation.y += dt * 2.4;
+      orbCore.rotation.x = Math.sin(elapsed * 2.2) * 0.35;
+      powerUpOrbGroup.position.y = SURFACE_Y + 0.038 + Math.sin(elapsed * 3.8) * 0.008;
+      const pulse = 1 + Math.sin(elapsed * 5.2) * 0.12;
+      orbHalo.scale.setScalar(pulse);
+    }
+    if (goalShieldP1Mesh.visible) {
+      shieldP1Mat.opacity = 0.56 + Math.sin(elapsed * 8) * 0.16;
+    }
+    if (goalShieldP2Mesh.visible) {
+      shieldP2Mat.opacity = 0.56 + Math.sin(elapsed * 8) * 0.16;
+    }
   };
 
   const dispose = () => {
@@ -664,6 +813,10 @@ export function buildArenaScene(
     goalStripP2Mat,
     textures,
     setStrikerAppearance,
+    setPaddleVisualScale,
+    setBonusPuckState,
+    setGoalShieldState,
+    setPowerUpOrbState,
     setTableTheme,
     setPuckSkin,
     setArenaBackground,

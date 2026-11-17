@@ -2,15 +2,26 @@ import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
+  Award,
   Bot,
   Clock,
+  Flame,
+  Gauge,
   Play,
+  Sparkles,
   Target,
   Trophy,
   UserCheck,
   Users,
+  Zap,
 } from 'lucide-react';
-import type { AIDifficulty, GameMode, MatchConfig, ScreenId } from '@/types/game';
+import type {
+  AIDifficulty,
+  GameMode,
+  GameplaySpeedPreset,
+  MatchConfig,
+  ScreenId,
+} from '@/types/game';
 
 interface MatchSetupWizardProps {
   activeScreen: 'setup_mode' | 'setup_players' | 'setup_duration' | 'setup_difficulty';
@@ -37,6 +48,15 @@ const WINNING_SCORE_PRESETS = [
   { label: 'Timer Only', value: 0 },
 ];
 
+const GAMEPLAY_SPEED_OPTIONS: Array<{
+  id: GameplaySpeedPreset;
+  label: string;
+}> = [
+  { id: 'slow', label: 'Slow' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'fast', label: 'Fast' },
+];
+
 export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
   activeScreen,
   config,
@@ -57,13 +77,24 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
     (p) => p.seconds === config.durationSeconds
   );
 
+  const isAIMode =
+    config.mode === 'vs_ai' ||
+    config.mode === 'time_challenge' ||
+    config.mode === 'best_of_three' ||
+    config.mode === 'tournament';
+
+  const supportsDifficultySelect =
+    config.mode === 'vs_ai' ||
+    config.mode === 'time_challenge' ||
+    config.mode === 'best_of_three';
+
   const tabs: Array<{ id: MatchSetupWizardProps['activeScreen']; label: string }> = [
     { id: 'setup_mode', label: 'Mode' },
     { id: 'setup_players', label: 'Players' },
     ...(config.mode !== 'practice'
-      ? [{ id: 'setup_duration' as const, label: 'Time & Score' }]
+      ? [{ id: 'setup_duration' as const, label: 'Rules & Speed' }]
       : []),
-    ...(config.mode === 'vs_ai'
+    ...(supportsDifficultySelect
       ? [{ id: 'setup_difficulty' as const, label: 'Difficulty' }]
       : []),
   ];
@@ -95,7 +126,7 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
 
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/75 p-4 overflow-y-auto">
-      <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-[#070B14] p-5 sm:p-7 shadow-2xl">
+      <div className="w-full max-w-2xl rounded-2xl border border-white/15 bg-[#070B14] p-5 sm:p-7 shadow-2xl max-h-[94vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
           <button
@@ -145,71 +176,139 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
             <p className="text-sm text-slate-300">
               Choose how you want to play on the table.
             </p>
-            <button
-              type="button"
-              onClick={() => selectMode('two_player')}
-              className={`w-full flex items-start gap-4 rounded-xl border p-4 text-left transition-colors cursor-pointer ${
-                config.mode === 'two_player'
-                  ? 'border-cyan-400 bg-cyan-500/12'
-                  : 'border-white/10 bg-[#0C1424] hover:border-white/25'
-              }`}
-            >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-cyan-500/20 text-cyan-300">
-                <Users className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="font-display text-base font-bold text-white">
-                  Two Player Local
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => selectMode('two_player')}
+                className={`flex items-start gap-3.5 rounded-xl border p-3.5 text-left transition-colors cursor-pointer ${
+                  config.mode === 'two_player'
+                    ? 'border-cyan-400 bg-cyan-500/12'
+                    : 'border-white/10 bg-[#0C1424] hover:border-white/25'
+                }`}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-500/20 text-cyan-300">
+                  <Users className="w-5 h-5" />
                 </div>
-                <p className="mt-0.5 text-xs text-slate-300">
-                  Play face-to-face on one screen with simultaneous multi-touch tracking on opposite ends.
-                </p>
-              </div>
-            </button>
+                <div>
+                  <div className="font-display text-sm font-bold text-white">
+                    Two Player Local
+                  </div>
+                  <p className="mt-0.5 text-xs text-slate-300">
+                    Face-to-face on one screen with simultaneous multi-touch tracking.
+                  </p>
+                </div>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => selectMode('vs_ai')}
-              className={`w-full flex items-start gap-4 rounded-xl border p-4 text-left transition-colors cursor-pointer ${
-                config.mode === 'vs_ai'
-                  ? 'border-red-500 bg-red-500/12'
-                  : 'border-white/10 bg-[#0C1424] hover:border-white/25'
-              }`}
-            >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-red-500/20 text-red-400">
-                <Bot className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="font-display text-base font-bold text-white">
-                  Play Against AI
+              <button
+                type="button"
+                onClick={() => selectMode('vs_ai')}
+                className={`flex items-start gap-3.5 rounded-xl border p-3.5 text-left transition-colors cursor-pointer ${
+                  config.mode === 'vs_ai'
+                    ? 'border-red-500 bg-red-500/12'
+                    : 'border-white/10 bg-[#0C1424] hover:border-white/25'
+                }`}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/20 text-red-400">
+                  <Bot className="w-5 h-5" />
                 </div>
-                <p className="mt-0.5 text-xs text-slate-300">
-                  Challenge an adaptive computer opponent across Easy, Medium, Hard, or Expert tiers.
-                </p>
-              </div>
-            </button>
+                <div>
+                  <div className="font-display text-sm font-bold text-white">
+                    Play Against AI
+                  </div>
+                  <p className="mt-0.5 text-xs text-slate-300">
+                    Single arcade match across Beginner to Expert AI tiers.
+                  </p>
+                </div>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => selectMode('practice')}
-              className={`w-full flex items-start gap-4 rounded-xl border p-4 text-left transition-colors cursor-pointer ${
-                config.mode === 'practice'
-                  ? 'border-cyan-400 bg-cyan-500/12'
-                  : 'border-white/10 bg-[#0C1424] hover:border-white/25'
-              }`}
-            >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-700/60 text-cyan-300">
-                <Target className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="font-display text-base font-bold text-white">
-                  Practice Mode
+              <button
+                type="button"
+                onClick={() => selectMode('time_challenge')}
+                className={`flex items-start gap-3.5 rounded-xl border p-3.5 text-left transition-colors cursor-pointer ${
+                  config.mode === 'time_challenge'
+                    ? 'border-amber-400 bg-amber-500/12'
+                    : 'border-white/10 bg-[#0C1424] hover:border-white/25'
+                }`}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-300">
+                  <Flame className="w-5 h-5" />
                 </div>
-                <p className="mt-0.5 text-xs text-slate-300">
-                  No match clock. Adjust puck speed, toggle a sparring bot, and drill bank shots freely.
-                </p>
-              </div>
-            </button>
+                <div>
+                  <div className="font-display text-sm font-bold text-white">
+                    Time Rush
+                  </div>
+                  <p className="mt-0.5 text-xs text-slate-300">
+                    Fast 0.65s face-offs — rack up maximum goals before 00:00.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => selectMode('best_of_three')}
+                className={`flex items-start gap-3.5 rounded-xl border p-3.5 text-left transition-colors cursor-pointer ${
+                  config.mode === 'best_of_three'
+                    ? 'border-emerald-400 bg-emerald-500/12'
+                    : 'border-white/10 bg-[#0C1424] hover:border-white/25'
+                }`}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-300">
+                  <Trophy className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-display text-sm font-bold text-white">
+                    Best of Three
+                  </div>
+                  <p className="mt-0.5 text-xs text-slate-300">
+                    First player to win 2 full rounds claims the championship series.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => selectMode('tournament')}
+                className={`flex items-start gap-3.5 rounded-xl border p-3.5 text-left transition-colors cursor-pointer ${
+                  config.mode === 'tournament'
+                    ? 'border-purple-400 bg-purple-500/12'
+                    : 'border-white/10 bg-[#0C1424] hover:border-white/25'
+                }`}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-500/20 text-purple-300">
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-display text-sm font-bold text-white">
+                    Arcade Tournament
+                  </div>
+                  <p className="mt-0.5 text-xs text-slate-300">
+                    3-stage AI bracket: Quarterfinal (Easy) → Semifinal (Hard) → Final (Expert).
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => selectMode('practice')}
+                className={`flex items-start gap-3.5 rounded-xl border p-3.5 text-left transition-colors cursor-pointer ${
+                  config.mode === 'practice'
+                    ? 'border-cyan-400 bg-cyan-500/12'
+                    : 'border-white/10 bg-[#0C1424] hover:border-white/25'
+                }`}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-700/60 text-cyan-300">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-display text-sm font-bold text-white">
+                    Practice Mode
+                  </div>
+                  <p className="mt-0.5 text-xs text-slate-300">
+                    No match clock. Adjust puck speed, toggle a sparring bot, and drill bank shots.
+                  </p>
+                </div>
+              </button>
+            </div>
           </div>
         )}
 
@@ -225,7 +324,7 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
                 className="flex items-center gap-2 text-xs font-semibold text-cyan-300"
               >
                 <UserCheck className="w-4 h-4" />
-                <span>Player 1 Name (Bottom Cyan Side)</span>
+                <span>Player 1 Name (Bottom / Left Cyan Side)</span>
               </label>
               <input
                 id="p1-name-input"
@@ -250,18 +349,20 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
               >
                 <UserCheck className="w-4 h-4" />
                 <span>
-                  {config.mode === 'vs_ai'
-                    ? 'AI Opponent Name (Top Side)'
-                    : 'Player 2 Name (Top Side)'}
+                  {isAIMode
+                    ? 'AI Opponent Name (Top / Right Side)'
+                    : 'Player 2 Name (Top / Right Side)'}
                 </span>
               </label>
               <input
                 id="p2-name-input"
                 type="text"
                 maxLength={18}
-                disabled={config.mode === 'vs_ai'}
+                disabled={isAIMode}
                 value={
-                  config.mode === 'vs_ai'
+                  config.mode === 'tournament'
+                    ? 'Tournament Bracket AI (Escalating)'
+                    : isAIMode
                     ? `Arena AI (${config.difficulty.toUpperCase()})`
                     : config.player2Name
                 }
@@ -278,7 +379,7 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
           </div>
         )}
 
-        {/* Match Duration Selection */}
+        {/* Match Duration, Target Score, Speed & Power-Ups */}
         {activeScreen === 'setup_duration' && (
           <div className="mt-5 space-y-4">
             <div className="flex items-center gap-2 text-sm text-slate-300">
@@ -300,7 +401,7 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
                         durationSeconds: preset.seconds,
                       });
                     }}
-                    className={`min-h-[48px] rounded-xl border font-mono-tabular text-sm font-bold transition-colors cursor-pointer ${
+                    className={`min-h-[46px] rounded-xl border font-mono-tabular text-sm font-bold transition-colors cursor-pointer ${
                       selected
                         ? 'border-cyan-400 bg-cyan-500/18 text-white'
                         : 'border-white/10 bg-[#0C1424] text-slate-300 hover:border-white/25'
@@ -312,7 +413,7 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
               })}
 
               <div
-                className={`flex items-center justify-between rounded-xl border px-3 min-h-[48px] ${
+                className={`flex items-center justify-between rounded-xl border px-3 min-h-[46px] ${
                   isCustomSelected
                     ? 'border-red-400 bg-red-500/12'
                     : 'border-white/10 bg-[#0C1424]'
@@ -339,38 +440,109 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
               </div>
             </div>
 
-            <div className="border-t border-white/10 pt-4">
+            {/* Winning Score Target */}
+            <div className="border-t border-white/10 pt-3.5">
               <div className="flex items-center gap-2 text-sm text-slate-300">
                 <Trophy className="w-4 h-4 text-amber-400" />
                 <span>Winning Score Target</span>
               </div>
-              <p className="mt-0.5 text-xs text-slate-400">
-                Match ends early when a player reaches the goal target, or play full time.
-              </p>
-              <div className="mt-2.5 grid grid-cols-3 sm:grid-cols-5 gap-2">
-                {WINNING_SCORE_PRESETS.map((preset) => {
-                  const selected = config.winningScore === preset.value;
-                  return (
-                    <button
-                      key={preset.value}
-                      type="button"
-                      onClick={() => {
-                        onButtonClick();
-                        onUpdateConfig({
-                          ...config,
-                          winningScore: preset.value,
-                        });
-                      }}
-                      className={`min-h-[44px] rounded-xl border px-2 text-xs font-bold transition-colors cursor-pointer ${
-                        selected
-                          ? 'border-amber-400 bg-amber-500/18 text-amber-200'
-                          : 'border-white/10 bg-[#0C1424] text-slate-300 hover:border-white/25'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
+              {config.mode === 'time_challenge' ? (
+                <p className="mt-1.5 rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-200">
+                  Time Rush mode ignores goal caps — score as many goals as possible before the clock hits 00:00.
+                </p>
+              ) : (
+                <>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Match ends early when a player reaches the goal target, or play full time.
+                  </p>
+                  <div className="mt-2.5 grid grid-cols-3 sm:grid-cols-5 gap-2">
+                    {WINNING_SCORE_PRESETS.map((preset) => {
+                      const selected = config.winningScore === preset.value;
+                      return (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => {
+                            onButtonClick();
+                            onUpdateConfig({
+                              ...config,
+                              winningScore: preset.value,
+                            });
+                          }}
+                          className={`min-h-[42px] rounded-xl border px-2 text-xs font-bold transition-colors cursor-pointer ${
+                            selected
+                              ? 'border-amber-400 bg-amber-500/18 text-amber-200'
+                              : 'border-white/10 bg-[#0C1424] text-slate-300 hover:border-white/25'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Gameplay Speed & Power-Ups */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-white/10 pt-3.5">
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+                  <Gauge className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Gameplay Speed</span>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-1.5">
+                  {GAMEPLAY_SPEED_OPTIONS.map((opt) => {
+                    const selected = config.gameplaySpeed === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          onButtonClick();
+                          onUpdateConfig({ ...config, gameplaySpeed: opt.id });
+                        }}
+                        className={`min-h-[40px] rounded-lg border text-xs font-bold transition-colors cursor-pointer ${
+                          selected
+                            ? 'border-cyan-400 bg-cyan-500/20 text-white'
+                            : 'border-white/10 bg-[#0C1424] text-slate-300 hover:border-white/25'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+                  <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
+                  <span>Arena Power-Ups</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onButtonClick();
+                    onUpdateConfig({
+                      ...config,
+                      powerUpsEnabled: !config.powerUpsEnabled,
+                    });
+                  }}
+                  className={`mt-2 w-full min-h-[40px] flex items-center justify-between rounded-lg border px-3 text-xs font-bold transition-colors cursor-pointer ${
+                    config.powerUpsEnabled
+                      ? 'border-yellow-400/70 bg-yellow-500/15 text-yellow-200'
+                      : 'border-white/10 bg-[#0C1424] text-slate-300 hover:border-white/25'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>{config.powerUpsEnabled ? 'Power-Ups Active' : 'Classic Pure Rules'}</span>
+                  </span>
+                  <span className="rounded bg-black/35 px-2 py-0.5 text-[10px] uppercase">
+                    {config.powerUpsEnabled ? 'ON' : 'OFF'}
+                  </span>
+                </button>
               </div>
             </div>
           </div>
@@ -378,16 +550,21 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
 
         {/* Difficulty Selection */}
         {activeScreen === 'setup_difficulty' && (
-          <div className="mt-5 space-y-2.5">
+          <div className="mt-5 space-y-2">
             <p className="text-sm text-slate-300">
               Choose the AI opponent&apos;s reaction speed and offensive precision.
             </p>
             {(
               [
                 {
+                  id: 'beginner',
+                  title: 'Beginner',
+                  desc: 'Gentle starter pace with forgiving defensive positioning.',
+                },
+                {
                   id: 'easy',
                   title: 'Easy',
-                  desc: 'Relaxed pace, wider reaction windows, ideal for warm-up.',
+                  desc: 'Relaxed arcade pace, wider reaction windows, great for warm-up.',
                 },
                 {
                   id: 'medium',
@@ -412,21 +589,21 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
                   key={item.id}
                   type="button"
                   onClick={() => selectDifficulty(item.id)}
-                  className={`w-full rounded-xl border p-3.5 text-left transition-colors cursor-pointer ${
+                  className={`w-full rounded-xl border p-3 text-left transition-colors cursor-pointer ${
                     selected
                       ? 'border-red-500 bg-red-500/15'
                       : 'border-white/10 bg-[#0C1424] hover:border-white/25'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-display text-base font-bold text-white">
+                    <span className="font-display text-sm sm:text-base font-bold text-white">
                       {item.title}
                     </span>
                     <span className="text-xs font-semibold text-red-400">
                       {selected ? 'Selected' : ''}
                     </span>
                   </div>
-                  <p className="mt-1 text-xs text-slate-300">{item.desc}</p>
+                  <p className="mt-0.5 text-xs text-slate-300">{item.desc}</p>
                 </button>
               );
             })}
@@ -467,3 +644,4 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
     </div>
   );
 };
+

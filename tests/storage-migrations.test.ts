@@ -181,6 +181,8 @@ export function runStorageAndMigrationTests(): number {
         aiLosses: 0,
         totalGoalsScored: 90,
         bestSingleMatchScore: 7,
+        longestWinStreak: 4,
+        bestMatchTimeSeconds: 62,
         fastestShotKmh: 95,
         recentMatches: Array.from({ length: 30 }, (_, i) => ({
           id: `r-${i}`,
@@ -205,16 +207,17 @@ export function runStorageAndMigrationTests(): number {
     passed++;
   }
 
-  // 6. New config & preference fields validate & clamp cleanly
+  // 6. New config, preference & statistics fields validate & clamp cleanly
   {
     const checked = validateParsedSaveData({
       matchConfig: {
-        mode: 'vs_ai',
+        mode: 'tournament',
         difficulty: 'expert',
         gameplaySpeed: 'fast',
         durationSeconds: 180,
         customDurationMinutes: 3,
         winningScore: 99,
+        powerUpsEnabled: true,
         player1Name: 'P1',
         player2Name: 'P2',
         practiceSpeedMultiplier: 1,
@@ -228,19 +231,57 @@ export function runStorageAndMigrationTests(): number {
         vibrationEnabled: false,
         quality: 'high',
         cameraView: 'top_down',
+        tableOrientation: 'landscape',
         reducedMotion: false,
         mirrorTopScoreOnMobile: true,
         introPreference: 'skip',
         hasSeenIntro: true,
         touchSensitivity: 3.5,
       },
+      statistics: {
+        totalMatches: 4,
+        p1Wins: 3,
+        p2Wins: 1,
+        draws: 0,
+        aiWins: 3,
+        aiLosses: 1,
+        totalGoalsScored: 14,
+        bestSingleMatchScore: 5,
+        longestWinStreak: 3,
+        bestMatchTimeSeconds: 48,
+        fastestShotKmh: 99,
+        recentMatches: [],
+      },
     });
+    assert.equal(checked.matchConfig.mode, 'tournament');
     assert.equal(checked.matchConfig.difficulty, 'expert');
     assert.equal(checked.matchConfig.winningScore, 25);
+    assert.equal(checked.matchConfig.powerUpsEnabled, true);
     assert.equal(checked.preferences.vibrationEnabled, false);
+    assert.equal(checked.preferences.tableOrientation, 'landscape');
     assert.equal(checked.preferences.touchSensitivity, 1.35);
+    assert.equal(checked.statistics.longestWinStreak, 3);
+    assert.equal(checked.statistics.bestMatchTimeSeconds, 48);
+
+    const beginnerChecked = validateParsedSaveData({
+      matchConfig: {
+        mode: 'vs_ai',
+        difficulty: 'beginner',
+        gameplaySpeed: 'slow',
+        durationSeconds: 120,
+        customDurationMinutes: 2,
+        winningScore: 5,
+        powerUpsEnabled: false,
+        player1Name: 'P1',
+        player2Name: 'P2',
+        practiceSpeedMultiplier: 1,
+      },
+    });
+    assert.equal(beginnerChecked.matchConfig.difficulty, 'beginner');
+    assert.equal(beginnerChecked.preferences.tableOrientation, 'auto');
     passed++;
   }
 
   return passed;
 }
+
