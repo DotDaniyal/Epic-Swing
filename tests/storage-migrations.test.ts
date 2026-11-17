@@ -199,6 +199,46 @@ export function runStorageAndMigrationTests(): number {
     assert.equal(validated.matchConfig.player1Name, 'CyberP1');
     assert.equal(validated.matchConfig.player2Name, 'NeonP2');
     assert.equal(validated.statistics.recentMatches.length, 25);
+    assert.equal(validated.matchConfig.winningScore, 7);
+    assert.equal(validated.preferences.vibrationEnabled, true);
+    assert.equal(validated.preferences.touchSensitivity, 1.0);
+    passed++;
+  }
+
+  // 6. New config & preference fields validate & clamp cleanly
+  {
+    const checked = validateParsedSaveData({
+      matchConfig: {
+        mode: 'vs_ai',
+        difficulty: 'expert',
+        gameplaySpeed: 'fast',
+        durationSeconds: 180,
+        customDurationMinutes: 3,
+        winningScore: 99,
+        player1Name: 'P1',
+        player2Name: 'P2',
+        practiceSpeedMultiplier: 1,
+      },
+      preferences: {
+        sfxEnabled: true,
+        sfxVolume: 0.8,
+        musicEnabled: false,
+        musicVolume: 0.3,
+        muteAll: false,
+        vibrationEnabled: false,
+        quality: 'high',
+        cameraView: 'top_down',
+        reducedMotion: false,
+        mirrorTopScoreOnMobile: true,
+        introPreference: 'skip',
+        hasSeenIntro: true,
+        touchSensitivity: 3.5,
+      },
+    });
+    assert.equal(checked.matchConfig.difficulty, 'expert');
+    assert.equal(checked.matchConfig.winningScore, 25);
+    assert.equal(checked.preferences.vibrationEnabled, false);
+    assert.equal(checked.preferences.touchSensitivity, 1.35);
     passed++;
   }
 

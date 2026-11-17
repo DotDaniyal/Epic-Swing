@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SURFACE_Y } from '@/game/constants/arena';
+import { HALF_LENGTH, SURFACE_Y } from '@/game/constants/arena';
 import type { AirHockeyPhysics } from '@/game/physics/AirHockeyPhysics';
 import type { GameMode } from '@/types/game';
 
@@ -12,7 +12,9 @@ export class MultiTouchInputController {
   private p2PointerId: number | null = null;
   private mode: GameMode = 'vs_ai';
   private active = false;
+  private touchSensitivity = 1.0;
 
+  private canvasRect: DOMRect | null = null;
   private readonly tablePlane = new THREE.Plane(
     new THREE.Vector3(0, 1, 0),
     -SURFACE_Y
@@ -34,8 +36,18 @@ export class MultiTouchInputController {
     this.camera = camera;
     this.physics = physics;
     this.onFirstGesture = onFirstGesture;
-
+    this.updateRect();
     this.bindEvents();
+  }
+
+  public updateRect(): void {
+    this.canvasRect = this.canvas.getBoundingClientRect();
+  }
+
+  public setTouchSensitivity(sens: number): void {
+    this.touchSensitivity = Number.isFinite(sens)
+      ? Math.max(0.75, Math.min(1.35, sens))
+      : 1.0;
   }
 
   public setMode(mode: GameMode): void {
@@ -48,17 +60,21 @@ export class MultiTouchInputController {
     if (!active) {
       this.clearPointers();
       this.heldKeys.clear();
+    } else {
+      this.updateRect();
     }
   }
 
   public clearPointers(): void {
+    if (this.p1PointerId !== null) this.safeRelease(this.p1PointerId);
+    if (this.p2PointerId !== null) this.safeRelease(this.p2PointerId);
     this.p1PointerId = null;
     this.p2PointerId = null;
   }
 
   public updateKeyboard(dt: number): void {
     if (!this.active) return;
-    const keySpeed = 2.85;
+    const keySpeed = 3.1;
 
     let p1dx = 0;
     let p1dz = 0;
@@ -103,13 +119,18 @@ export class MultiTouchInputController {
 
   private screenToTable(
     clientX: number,
-    clientY: number
-  ): { x: number; z: number; screenHalf: 'bottom' | 'top' } | null {
-    const rect = this.canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
+    clientY: number,
+    playerForSensitivity?: 1 | 2
+  ): { x: number; z: number } | null {
+    const rect = this.canvasRect;
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      this.updateRect();
+    }
+    const r = this.canvasRect;
+    if (!r || r.width <= 0 || r.height <= 0) return null;
 
-    const relX = (clientX - rect.left) / rect.width;
-    const relY = (clientY - rect.top) / rect.height;
+    const relX = (clientX - r.left) / r.width;
+    const relY = (clientY - r.top) / r.height;
 
     this.ndc.set(relX * 2 - 1, -(relY * 2 - 1));
     this.raycaster.setFromCamera(this.ndc, this.camera);
@@ -119,10 +140,15 @@ export class MultiTouchInputController {
     );
     if (!hit) return null;
 
+    if (this.touchSensitivity === 1.0 || !playerForSensitivity) {
+      return { x: hit.x, z: hit.z };
+    }
+
+    const pivotZ =
+      playerForSensitivity === 1 ? HALF_LENGTH * 0.5 : -HALF_LENGTH * 0.5;
     return {
-      x: hit.x,
-      z: hit.z,
-      screenHalf: relY >= 0.5 ? 'bottom' : 'top',
+      x: hit.x * this.touchSensitivity,
+      z: pivotZ + (hit.z - pivotZ) * this.touchSensitivity,
     };
   }
 
@@ -130,44 +156,61 @@ export class MultiTouchInputController {
     this.onFirstGesture?.();
     if (!this.active) return;
 
+    this.updateRect();
     if (e.pointerType !== 'mouse') {
       e.preventDefault();
     }
 
-    const pos = this.screenToTable(e.clientX, e.clientY);
-    if (!pos) return;
+    const rawPos = this.screenToTable(e.clientX, e.clientY);
+    if (!rawPos) return;
 
     if (this.mode === 'two_player') {
-      const wantsP1 = pos.z >= 0;
+      const wantsP1 = rawPos.z >= 0;
       if (wantsP1) {
         if (this.p1PointerId === null) {
           this.p1PointerId = e.pointerId;
           this.safeCapture(e.pointerId);
-          this.physics.setPaddleTarget(1, pos.x, pos.z);
+          const pos = this.screenToTable(e.clientX, e.clientY, 1) ?? rawPos;
+          this.physics.snapPaddleTo(1, pos.x, pos.z);
         }
       } else if (this.p2PointerId === null) {
         this.p2PointerId = e.pointerId;
         this.safeCapture(e.pointerId);
-        this.physics.setPaddleTarget(2, pos.x, pos.z);
+        const pos = this.screenToTable(e.clientX, e.clientY, 2) ?? rawPos;
+        this.physics.snapPaddleTo(2, pos.x, pos.z);
       }
-    } else if (this.p1PointerId === null) {
+    } else {
+      // Single-player: allow seamless re-grab even if a previous pointer became stale
+      if (this.p1PointerId !== null && this.p1PointerId !== e.pointerId) {
+        this.safeRelease(this.p1PointerId);
+      }
       this.p1PointerId = e.pointerId;
       this.safeCapture(e.pointerId);
-      this.physics.setPaddleTarget(1, pos.x, pos.z);
+      const pos = this.screenToTable(e.clientX, e.clientY, 1) ?? rawPos;
+      this.physics.snapPaddleTo(1, pos.x, pos.z);
     }
   };
 
   private handlePointerMove = (e: PointerEvent): void => {
     if (!this.active) return;
 
+    if (e.pointerType !== 'mouse') {
+      e.preventDefault();
+    }
+
+    const coalesced =
+      typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : null;
+    const latest =
+      coalesced && coalesced.length > 0 ? coalesced[coalesced.length - 1] : e;
+
     if (e.pointerId === this.p1PointerId) {
-      const pos = this.screenToTable(e.clientX, e.clientY);
+      const pos = this.screenToTable(latest.clientX, latest.clientY, 1);
       if (pos) this.physics.setPaddleTarget(1, pos.x, pos.z);
       return;
     }
 
     if (e.pointerId === this.p2PointerId && this.mode === 'two_player') {
-      const pos = this.screenToTable(e.clientX, e.clientY);
+      const pos = this.screenToTable(latest.clientX, latest.clientY, 2);
       if (pos) this.physics.setPaddleTarget(2, pos.x, pos.z);
       return;
     }
@@ -177,7 +220,7 @@ export class MultiTouchInputController {
       this.p1PointerId === null &&
       this.mode !== 'two_player'
     ) {
-      const pos = this.screenToTable(e.clientX, e.clientY);
+      const pos = this.screenToTable(latest.clientX, latest.clientY, 1);
       if (pos) this.physics.setPaddleTarget(1, pos.x, pos.z);
     }
   };
@@ -190,6 +233,12 @@ export class MultiTouchInputController {
     if (e.pointerId === this.p2PointerId) {
       this.p2PointerId = null;
       this.safeRelease(e.pointerId);
+    }
+  };
+
+  private handleTouchBlock = (e: TouchEvent): void => {
+    if (this.active) {
+      e.preventDefault();
     }
   };
 
@@ -254,6 +303,12 @@ export class MultiTouchInputController {
     this.canvas.addEventListener('pointerup', this.handlePointerEnd);
     this.canvas.addEventListener('pointercancel', this.handlePointerEnd);
     this.canvas.addEventListener('lostpointercapture', this.handlePointerEnd);
+    this.canvas.addEventListener('touchstart', this.handleTouchBlock, {
+      passive: false,
+    });
+    this.canvas.addEventListener('touchmove', this.handleTouchBlock, {
+      passive: false,
+    });
 
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
@@ -266,6 +321,8 @@ export class MultiTouchInputController {
     this.canvas.removeEventListener('pointerup', this.handlePointerEnd);
     this.canvas.removeEventListener('pointercancel', this.handlePointerEnd);
     this.canvas.removeEventListener('lostpointercapture', this.handlePointerEnd);
+    this.canvas.removeEventListener('touchstart', this.handleTouchBlock);
+    this.canvas.removeEventListener('touchmove', this.handleTouchBlock);
 
     window.removeEventListener('keydown', this.handleKeyDown);
     window.removeEventListener('keyup', this.handleKeyUp);

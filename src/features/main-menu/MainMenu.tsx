@@ -143,21 +143,24 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              onButtonClick();
-              onToggleFullscreen();
-            }}
-            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            className="hidden sm:flex h-11 w-11 items-center justify-center rounded-xl border border-white/12 bg-[#070B14]/92 text-slate-200 transition-colors hover:border-cyan-400/50 hover:text-white cursor-pointer"
-          >
-            {isFullscreen ? (
-              <Minimize2 className="w-4 h-4" />
-            ) : (
-              <Maximize2 className="w-4 h-4" />
+          {typeof document !== 'undefined' &&
+            Boolean(document.documentElement?.requestFullscreen) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onButtonClick();
+                  onToggleFullscreen();
+                }}
+                aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/12 bg-[#070B14]/92 text-slate-200 transition-colors hover:border-cyan-400/50 hover:text-white cursor-pointer"
+              >
+                {isFullscreen ? (
+                  <Minimize2 className="w-4 h-4" />
+                ) : (
+                  <Maximize2 className="w-4 h-4" />
+                )}
+              </button>
             )}
-          </button>
         </div>
       </div>
 
@@ -240,6 +243,16 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 <span className="font-mono-tabular text-slate-100">
                   {durationLabel}
                 </span>
+                {config.mode !== 'practice' && (
+                  <>
+                    <span className="mx-1 text-slate-500">·</span>
+                    <span className="font-semibold text-amber-300">
+                      {config.winningScore > 0
+                        ? `First to ${config.winningScore}`
+                        : 'Timed'}
+                    </span>
+                  </>
+                )}
               </p>
             </div>
           </div>

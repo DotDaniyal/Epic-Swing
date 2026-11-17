@@ -15,25 +15,30 @@ import { formatClock, formatDurationLabel } from '@/utils/format';
 export function runAIAndControlsTests(): number {
   let passed = 0;
 
-  // 1. Difficulty profile monotonic scaling
+  // 1. Difficulty profile monotonic scaling (easy -> medium -> hard -> expert)
   {
     const easy = AI_DIFFICULTY_PROFILES.easy;
     const med = AI_DIFFICULTY_PROFILES.medium;
     const hard = AI_DIFFICULTY_PROFILES.hard;
+    const expert = AI_DIFFICULTY_PROFILES.expert;
 
     assert.ok(
       easy.reactionInterval > med.reactionInterval &&
-        med.reactionInterval > hard.reactionInterval,
-      'Reaction interval tightens from easy -> medium -> hard'
+        med.reactionInterval > hard.reactionInterval &&
+        hard.reactionInterval > expert.reactionInterval,
+      'Reaction interval tightens from easy -> medium -> hard -> expert'
     );
     assert.ok(
       easy.maxSpeedFactor < med.maxSpeedFactor &&
-        med.maxSpeedFactor < hard.maxSpeedFactor,
-      'Max speed factor scales up from easy -> medium -> hard'
+        med.maxSpeedFactor < hard.maxSpeedFactor &&
+        hard.maxSpeedFactor < expert.maxSpeedFactor,
+      'Max speed factor scales up from easy -> medium -> hard -> expert'
     );
     assert.ok(
-      easy.aggression < med.aggression && med.aggression < hard.aggression,
-      'Aggression increases from easy -> medium -> hard'
+      easy.aggression < med.aggression &&
+        med.aggression < hard.aggression &&
+        hard.aggression < expert.aggression,
+      'Aggression increases from easy -> medium -> hard -> expert'
     );
     passed++;
   }
@@ -96,13 +101,28 @@ export function runAIAndControlsTests(): number {
     passed++;
   }
 
-  // 4. AI resets cleanly on difficulty switch
+  // 4. AI resets cleanly on difficulty switch including expert tier
   {
+    const physics = new AirHockeyPhysics();
     const ai = new HockeyAI();
     ai.setDifficulty('easy');
     assert.equal(ai.getDifficulty(), 'easy');
-    ai.setDifficulty('hard');
-    assert.equal(ai.getDifficulty(), 'hard');
+    ai.setDifficulty('expert');
+    assert.equal(ai.getDifficulty(), 'expert');
+
+    physics.puck.x = -0.15;
+    physics.puck.z = -0.35;
+    physics.puck.vx = 0.05;
+    physics.puck.vz = -0.25;
+    for (let i = 0; i < 20; i++) {
+      ai.update(physics, 1 / 60);
+      physics.step(1 / 60);
+    }
+    assert.ok(
+      physics.p2.z <= -(PADDLE_RADIUS + CENTER_DIVIDER_MARGIN) &&
+        Math.abs(physics.p2.x) <= HALF_WIDTH - PADDLE_RADIUS,
+      'Expert AI stays cleanly clamped within its half'
+    );
     passed++;
   }
 

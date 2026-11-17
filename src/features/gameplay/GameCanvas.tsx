@@ -13,6 +13,7 @@ interface GameCanvasProps {
   initialProfiles: { p1: PlayerIdentity; p2: PlayerIdentity };
   onEngineReady: (engine: AirHockeyEngine) => void;
   onHUDUpdate: (hud: LiveMatchHUDState) => void;
+  onSpeedUpdate?: (puckSpeedKmh: number, topSpeedKmh: number) => void;
   onMatchFinished: (hud: LiveMatchHUDState) => void;
   onCinematicGoal?: () => void;
 }
@@ -23,6 +24,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   initialProfiles,
   onEngineReady,
   onHUDUpdate,
+  onSpeedUpdate,
   onMatchFinished,
   onCinematicGoal,
 }) => {
@@ -32,12 +34,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const callbacksRef = useRef({
     onEngineReady,
     onHUDUpdate,
+    onSpeedUpdate,
     onMatchFinished,
     onCinematicGoal,
   });
   callbacksRef.current = {
     onEngineReady,
     onHUDUpdate,
+    onSpeedUpdate,
     onMatchFinished,
     onCinematicGoal,
   };
@@ -53,6 +57,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       initialProfiles,
       {
         onHUDUpdate: (hud) => callbacksRef.current.onHUDUpdate(hud),
+        onSpeedUpdate: (puckSpeedKmh, topSpeedKmh) =>
+          callbacksRef.current.onSpeedUpdate?.(puckSpeedKmh, topSpeedKmh),
         onMatchFinished: (hud) => callbacksRef.current.onMatchFinished(hud),
         onCinematicGoal: () => callbacksRef.current.onCinematicGoal?.(),
         onContextLost: () => setContextLost(true),

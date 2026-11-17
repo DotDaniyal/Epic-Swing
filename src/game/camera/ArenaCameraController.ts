@@ -128,11 +128,12 @@ export class ArenaCameraController {
     const vFovRad = THREE.MathUtils.degToRad(this.camera.fov);
     const tanHalfFov = Math.tan(vFovRad / 2);
 
-    const totalW = TABLE_WIDTH + RAIL_THICKNESS * 2 + 0.16;
-    const totalL = TABLE_LENGTH + RAIL_THICKNESS * 2 + 0.3;
+    const totalW = TABLE_WIDTH + RAIL_THICKNESS * 2;
+    const totalL = TABLE_LENGTH + RAIL_THICKNESS * 2 + 0.14;
 
-    const marginY = aspect < 0.85 ? 1.28 : 1.22;
-    const marginX = aspect < 0.85 ? 1.12 : 1.18;
+    const isPortrait = aspect < 0.85;
+    const marginY = isPortrait ? 1.07 : 1.045;
+    const marginX = isPortrait ? 1.03 : 1.05;
     const distV = (totalL * 0.5 * marginY) / tanHalfFov;
     const distH = (totalW * 0.5 * marginX) / (tanHalfFov * aspect);
     const baseDist = Math.max(distV, distH);
@@ -182,14 +183,17 @@ export class ArenaCameraController {
     }
 
     const isTopDown = params.cameraView === 'top_down';
-    const tiltDeg = isTopDown ? 0 : aspect < 0.85 ? 6 : 13;
+    const tiltDeg = isTopDown ? 0 : isPortrait ? 3.5 : 8.5;
     const tiltRad = THREE.MathUtils.degToRad(tiltDeg);
+    // Slight look-at offset keeps space under compact top scoreboard bar while filling bottom edge
+    const lookZOffset = isPortrait ? -0.055 : -0.03;
+    const effectiveDist = baseDist / Math.max(0.94, Math.cos(tiltRad));
 
     this.targetCamPos.set(
       0,
-      SURFACE_Y + Math.cos(tiltRad) * baseDist,
-      Math.sin(tiltRad) * baseDist
+      SURFACE_Y + Math.cos(tiltRad) * effectiveDist,
+      lookZOffset + Math.sin(tiltRad) * effectiveDist
     );
-    this.targetLookAt.set(0, SURFACE_Y, 0);
+    this.targetLookAt.set(0, SURFACE_Y, lookZOffset);
   }
 }

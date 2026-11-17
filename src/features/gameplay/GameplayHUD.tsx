@@ -24,6 +24,9 @@ interface GameplayHUDProps {
   prefs: UserPreferences;
   isFullscreen: boolean;
   practiceSparring: boolean;
+  liveSpeedRef: React.RefObject<HTMLSpanElement | null>;
+  topSpeedRef: React.RefObject<HTMLSpanElement | null>;
+  practiceSpeedRef: React.RefObject<HTMLSpanElement | null>;
   onPause: () => void;
   onToggleMute: () => void;
   onToggleFullscreen: () => void;
@@ -39,6 +42,9 @@ export const GameplayHUD: React.FC<GameplayHUDProps> = ({
   prefs,
   isFullscreen,
   practiceSparring,
+  liveSpeedRef,
+  topSpeedRef,
+  practiceSpeedRef,
   onPause,
   onToggleMute,
   onToggleFullscreen,
@@ -58,8 +64,12 @@ export const GameplayHUD: React.FC<GameplayHUDProps> = ({
   const showMirroredTop =
     config.mode === 'two_player' && prefs.mirrorTopScoreOnMobile;
 
+  const canFullscreen =
+    typeof document !== 'undefined' &&
+    Boolean(document.documentElement?.requestFullscreen);
+
   return (
-    <div className="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between p-2.5 sm:p-4">
+    <div className="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between p-2 sm:p-3.5">
       {/* Top Edge Arcade Broadcast Scoreboard */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-stretch overflow-hidden rounded-xl border border-white/15 bg-[#070B14]/95 shadow-xl pointer-events-auto">
@@ -88,12 +98,12 @@ export const GameplayHUD: React.FC<GameplayHUDProps> = ({
             </span>
           </div>
 
-          {/* Center Clock / Practice Speed */}
-          <div className="flex flex-col items-center justify-center border-x border-white/10 bg-[#05070C] px-2.5 sm:px-4 py-1.5 min-w-[68px] sm:min-w-[84px]">
+          {/* Center Clock / Target Score / Practice Speed */}
+          <div className="flex flex-col items-center justify-center border-x border-white/10 bg-[#05070C] px-2.5 sm:px-3.5 py-1 min-w-[66px] sm:min-w-[82px]">
             {config.mode !== 'practice' ? (
               <>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
-                  Time
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                  {config.winningScore > 0 ? `First ${config.winningScore}` : 'Time'}
                 </span>
                 <span
                   className={`font-mono-tabular text-base sm:text-xl font-extrabold leading-tight ${
@@ -111,7 +121,7 @@ export const GameplayHUD: React.FC<GameplayHUDProps> = ({
                   Practice
                 </span>
                 <span className="font-mono-tabular text-sm sm:text-base font-extrabold leading-tight text-white">
-                  {hud.puckSpeedKmh}{' '}
+                  <span ref={practiceSpeedRef}>{hud.puckSpeedKmh}</span>{' '}
                   <span className="text-[10px] font-normal text-slate-400">
                     km/h
                   </span>
@@ -183,18 +193,20 @@ export const GameplayHUD: React.FC<GameplayHUDProps> = ({
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={onToggleFullscreen}
-            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            className="hidden sm:flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-[#070B14]/95 text-slate-200 hover:border-cyan-400/60 hover:text-white cursor-pointer"
-          >
-            {isFullscreen ? (
-              <Minimize2 className="w-4 h-4" />
-            ) : (
-              <Maximize2 className="w-4 h-4" />
-            )}
-          </button>
+          {canFullscreen && (
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-[#070B14]/95 text-slate-200 hover:border-cyan-400/60 hover:text-white cursor-pointer"
+            >
+              {isFullscreen ? (
+                <Minimize2 className="w-4 h-4" />
+              ) : (
+                <Maximize2 className="w-4 h-4" />
+              )}
+            </button>
+          )}
 
           <button
             type="button"
@@ -307,13 +319,13 @@ export const GameplayHUD: React.FC<GameplayHUDProps> = ({
             </button>
           </div>
         ) : (
-          <div className="rounded-lg border border-white/10 bg-[#070B14]/85 px-3.5 py-1 text-[11px] font-semibold text-slate-300">
+          <div className="rounded-lg border border-white/10 bg-[#070B14]/85 px-3 py-1 text-[11px] font-semibold text-slate-300">
             <span className="font-mono-tabular text-white">
-              {hud.puckSpeedKmh} km/h
+              <span ref={liveSpeedRef}>{hud.puckSpeedKmh}</span> km/h
             </span>
             <span className="mx-2 text-slate-500">·</span>
             <span className="font-mono-tabular text-amber-300">
-              Peak {hud.topSpeedKmh} km/h
+              Peak <span ref={topSpeedRef}>{hud.topSpeedKmh}</span> km/h
             </span>
           </div>
         )}

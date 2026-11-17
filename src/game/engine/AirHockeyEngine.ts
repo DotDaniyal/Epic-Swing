@@ -25,6 +25,7 @@ export type { CinematicStage };
 
 export interface EngineCallbacks {
   onHUDUpdate: (hud: LiveMatchHUDState) => void;
+  onSpeedUpdate?: (puckSpeedKmh: number, topSpeedKmh: number) => void;
   onMatchFinished: (hud: LiveMatchHUDState) => void;
   onCinematicGoal?: () => void;
   onContextLost?: () => void;
@@ -69,12 +70,14 @@ export class AirHockeyEngine {
   private lastGoalSpeedKmh = 0;
   private winner: 'p1' | 'p2' | 'draw' | null = null;
   private practiceSparring = false;
+  private winningGoalPending = false;
+  private lastHudEmitKey = '';
 
   // Frame pacing & juice
   private hitstopTimer = 0;
   private goalFlashP1 = 0;
   private goalFlashP2 = 0;
-  private hudSyncAccumulator = 0;
+  private speedSyncAccumulator = 0;
   private resizeObserver: ResizeObserver;
 
   constructor(
@@ -133,9 +136,12 @@ export class AirHockeyEngine {
           Math.min(1.3, impactSpeed / 4.2),
           player === 1 ? 'p1' : 'p2'
         );
+        if (this.phase === 'active' && impactSpeed > 2.2) {
+          this.vibrate(12);
+        }
         if (!this.prefs.reducedMotion && impactSpeed > 3.6) {
           this.cameraController.addShake(impactSpeed * 0.0022, 0.018);
-          this.hitstopTimer = this.phase === 'cinematic' ? 0 : 0.028;
+          this.hitstopTimer = this.phase === 'cinematic' ? 0 : 0.024;
         }
       },
       onWallHit: (x, z, impactSpeed) => {
@@ -237,6 +243,8 @@ export class AirHockeyEngine {
   public setCinematicStage(stage: CinematicStage): void {
     this.cinematic.startStage(stage, this.physics, this.vfx);
     this.input.setActive(false);
+    this.physics.setPaddleDirectControl(1, false);
+    this.physics.setPaddleDirectControl(2, false);
     this.phase = stage === 'none' ? 'idle' : 'cinematic';
   }
 
@@ -249,12 +257,14 @@ export class AirHockeyEngine {
     } else {
       this.physics.speedScale = 1.0;
     }
+    this.syncPaddleControlModes();
   }
 
   public applyPreferences(prefs: UserPreferences): void {
     this.prefs = { ...prefs };
     this.audio.applyPreferences(prefs);
     this.vfx.reducedMotion = prefs.reducedMotion;
+    this.input.setTouchSensitivity(prefs.touchSensitivity);
 
     const quality = this.resolveQuality(prefs.quality);
     if (this.isSoftwareGl) {
@@ -304,10 +314,12 @@ export class AirHockeyEngine {
     this.lastGoalSpeedKmh = 0;
     this.pendingServe = 'center';
     this.winner = null;
+    this.winningGoalPending = false;
+    this.lastHudEmitKey = '';
     this.hitstopTimer = 0;
     this.goalFlashP1 = 0;
     this.goalFlashP2 = 0;
-    this.hudSyncAccumulator = 0;
+    this.speedSyncAccumulator = 0;
     this.phaseBeforePause = 'active';
     this.cameraController.setShake(0);
     this.physics.topSpeedKmh = 0;
@@ -327,14 +339,15 @@ export class AirHockeyEngine {
       this.lastCountdownStep = 4;
       this.input.setActive(false);
     }
-
-    this.pushHUD();
+    this.syncPaddleControlModes();
+    this.pushHUD(true);
   }
 
   public enterIdleMenu(): void {
     this.cinematic.stage = 'none';
     this.phase = 'idle';
     this.phaseBeforePause = 'active';
+    this.winningGoalPending = false;
     this.hitstopTimer = 0;
     this.goalFlashP1 = 0;
     this.goalFlashP2 = 0;
@@ -342,9 +355,10 @@ export class AirHockeyEngine {
     this.sceneObjects.goalLightP1.intensity = 0;
     this.sceneObjects.goalLightP2.intensity = 0;
     this.input.setActive(false);
+    this.syncPaddleControlModes();
     this.physics.resetPositions('center');
     this.vfx.clearTrail();
-    this.pushHUD();
+    this.pushHUD(true);
   }
 
   public pauseMatch(): void {
@@ -356,7 +370,8 @@ export class AirHockeyEngine {
       this.phaseBeforePause = this.phase;
       this.phase = 'paused';
       this.input.setActive(false);
-      this.pushHUD();
+      this.syncPaddleControlModes();
+      this.pushHUD(true);
     }
   }
 
@@ -364,8 +379,32 @@ export class AirHockeyEngine {
     if (this.phase === 'paused') {
       this.phase = this.phaseBeforePause;
       this.input.setActive(this.phase === 'active');
+      this.syncPaddleControlModes();
       this.clock.getDelta();
-      this.pushHUD();
+      this.pushHUD(true);
+    }
+  }
+
+  private syncPaddleControlModes(): void {
+    const activePlay = this.phase === 'active';
+    this.physics.setPaddleDirectControl(1, activePlay);
+    this.physics.setPaddleDirectControl(
+      2,
+      activePlay && this.config.mode === 'two_player'
+    );
+  }
+
+  private vibrate(pattern: number | number[]): void {
+    if (!this.prefs.vibrationEnabled) return;
+    if (
+      typeof navigator !== 'undefined' &&
+      typeof navigator.vibrate === 'function'
+    ) {
+      try {
+        navigator.vibrate(pattern);
+      } catch {
+        // Ignore on unsupported browsers
+      }
     }
   }
 
@@ -395,6 +434,7 @@ export class AirHockeyEngine {
     this.lastGoalScorer = scorer === 1 ? 'p1' : 'p2';
     this.lastGoalSpeedKmh = puckSpeedKmh;
     this.audio.playGoal(scorer === 1);
+    this.vibrate([35, 30, 50]);
 
     if (scorer === 1) {
       this.score1++;
@@ -412,21 +452,33 @@ export class AirHockeyEngine {
       this.cameraController.setShake(0.024);
     }
 
+    const winTarget =
+      this.config.mode !== 'practice' && this.config.winningScore > 0
+        ? this.config.winningScore
+        : 0;
+    this.winningGoalPending =
+      winTarget > 0 &&
+      (this.score1 >= winTarget || this.score2 >= winTarget);
+
     this.phase = 'goal_pause';
-    this.goalPauseTimer = 1.55;
+    this.goalPauseTimer = this.winningGoalPending ? 1.1 : 1.45;
     this.input.setActive(false);
-    this.pushHUD();
+    this.syncPaddleControlModes();
+    this.pushHUD(true);
   }
 
   private finishMatch(): void {
     this.phase = 'finished';
+    this.winningGoalPending = false;
     this.input.setActive(false);
+    this.syncPaddleControlModes();
     if (this.score1 > this.score2) this.winner = 'p1';
     else if (this.score2 > this.score1) this.winner = 'p2';
     else this.winner = 'draw';
 
     this.audio.playVictory();
     const hud = this.buildHUDState();
+    this.lastHudEmitKey = '';
     this.callbacks.onHUDUpdate(hud);
     this.callbacks.onMatchFinished(hud);
   }
@@ -448,7 +500,12 @@ export class AirHockeyEngine {
     };
   }
 
-  private pushHUD(): void {
+  private pushHUD(force = false): void {
+    const rem = Math.max(0, Math.ceil(this.remainingSeconds));
+    const cd = Math.max(0, Math.ceil(this.countdownTimer));
+    const key = `${this.matchId}|${this.phase}|${this.score1}|${this.score2}|${rem}|${cd}|${this.lastGoalScorer}|${this.winner}`;
+    if (!force && key === this.lastHudEmitKey) return;
+    this.lastHudEmitKey = key;
     this.callbacks.onHUDUpdate(this.buildHUDState());
   }
 
@@ -459,6 +516,7 @@ export class AirHockeyEngine {
     const height = Math.max(1, rect.height);
     this.cameraController.setAspect(width, height);
     this.renderer.setSize(width, height, false);
+    this.input.updateRect();
   }
 
   private tick = (): void => {
@@ -483,7 +541,8 @@ export class AirHockeyEngine {
         this.phase = 'active';
         this.audio.playCountdown(true);
         this.input.setActive(true);
-        this.pushHUD();
+        this.syncPaddleControlModes();
+        this.pushHUD(true);
       }
     } else if (this.phase === 'active') {
       if (this.hitstopTimer > 0) {
@@ -506,25 +565,36 @@ export class AirHockeyEngine {
         }
       }
 
-      this.hudSyncAccumulator += dt;
-      if (this.hudSyncAccumulator >= 0.08) {
-        this.hudSyncAccumulator = 0;
-        this.pushHUD();
+      // Only emit React HUD state updates on discrete second/score/phase changes (zero idle re-renders)
+      this.pushHUD(false);
+
+      this.speedSyncAccumulator += dt;
+      if (this.speedSyncAccumulator >= 0.08) {
+        this.speedSyncAccumulator = 0;
+        this.callbacks.onSpeedUpdate?.(
+          this.physics.getPuckSpeedKmh(),
+          this.physics.topSpeedKmh
+        );
       }
     } else if (this.phase === 'goal_pause') {
       this.physics.step(dt);
       this.goalPauseTimer -= dt;
       if (this.goalPauseTimer <= 0) {
-        this.vfx.clearTrail();
-        if (this.config.mode === 'practice') {
-          this.physics.resetPositions('center');
-          this.physics.launchPracticePuck(this.config.practiceSpeedMultiplier);
+        if (this.winningGoalPending) {
+          this.finishMatch();
         } else {
-          this.physics.resetPositions(this.pendingServe);
+          this.vfx.clearTrail();
+          if (this.config.mode === 'practice') {
+            this.physics.resetPositions('center');
+            this.physics.launchPracticePuck(this.config.practiceSpeedMultiplier);
+          } else {
+            this.physics.resetPositions(this.pendingServe);
+          }
+          this.phase = 'active';
+          this.input.setActive(true);
+          this.syncPaddleControlModes();
+          this.pushHUD(true);
         }
-        this.phase = 'active';
-        this.input.setActive(true);
-        this.pushHUD();
       }
     }
 

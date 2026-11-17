@@ -6,6 +6,7 @@ import {
   Clock,
   Play,
   Target,
+  Trophy,
   UserCheck,
   Users,
 } from 'lucide-react';
@@ -26,6 +27,14 @@ const PRESET_DURATIONS = [
   { label: '3 Min', seconds: 180 },
   { label: '5 Min', seconds: 300 },
   { label: '10 Min', seconds: 600 },
+];
+
+const WINNING_SCORE_PRESETS = [
+  { label: 'First to 3', value: 3 },
+  { label: 'First to 5', value: 5 },
+  { label: 'First to 7', value: 7 },
+  { label: 'First to 10', value: 10 },
+  { label: 'Timer Only', value: 0 },
 ];
 
 export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
@@ -52,7 +61,7 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
     { id: 'setup_mode', label: 'Mode' },
     { id: 'setup_players', label: 'Players' },
     ...(config.mode !== 'practice'
-      ? [{ id: 'setup_duration' as const, label: 'Duration' }]
+      ? [{ id: 'setup_duration' as const, label: 'Time & Score' }]
       : []),
     ...(config.mode === 'vs_ai'
       ? [{ id: 'setup_difficulty' as const, label: 'Difficulty' }]
@@ -175,7 +184,7 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
                   Play Against AI
                 </div>
                 <p className="mt-0.5 text-xs text-slate-300">
-                  Challenge an adaptive computer opponent across Easy, Medium, or Hard tiers.
+                  Challenge an adaptive computer opponent across Easy, Medium, Hard, or Expert tiers.
                 </p>
               </div>
             </button>
@@ -329,12 +338,47 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
                 <span className="ml-1 text-xs text-slate-400">m</span>
               </div>
             </div>
+
+            <div className="border-t border-white/10 pt-4">
+              <div className="flex items-center gap-2 text-sm text-slate-300">
+                <Trophy className="w-4 h-4 text-amber-400" />
+                <span>Winning Score Target</span>
+              </div>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Match ends early when a player reaches the goal target, or play full time.
+              </p>
+              <div className="mt-2.5 grid grid-cols-3 sm:grid-cols-5 gap-2">
+                {WINNING_SCORE_PRESETS.map((preset) => {
+                  const selected = config.winningScore === preset.value;
+                  return (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      onClick={() => {
+                        onButtonClick();
+                        onUpdateConfig({
+                          ...config,
+                          winningScore: preset.value,
+                        });
+                      }}
+                      className={`min-h-[44px] rounded-xl border px-2 text-xs font-bold transition-colors cursor-pointer ${
+                        selected
+                          ? 'border-amber-400 bg-amber-500/18 text-amber-200'
+                          : 'border-white/10 bg-[#0C1424] text-slate-300 hover:border-white/25'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 
         {/* Difficulty Selection */}
         {activeScreen === 'setup_difficulty' && (
-          <div className="mt-5 space-y-3">
+          <div className="mt-5 space-y-2.5">
             <p className="text-sm text-slate-300">
               Choose the AI opponent&apos;s reaction speed and offensive precision.
             </p>
@@ -353,7 +397,12 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
                 {
                   id: 'hard',
                   title: 'Hard',
-                  desc: 'Fast predictive intercepts and sharp counter-strikes.',
+                  desc: 'Fast predictive intercepts and sharp angled counter-strikes.',
+                },
+                {
+                  id: 'expert',
+                  title: 'Expert',
+                  desc: 'Pro-arcade speed, tight corner targeting, and relentless pressure.',
                 },
               ] as const
             ).map((item) => {
@@ -363,7 +412,7 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
                   key={item.id}
                   type="button"
                   onClick={() => selectDifficulty(item.id)}
-                  className={`w-full rounded-xl border p-4 text-left transition-colors cursor-pointer ${
+                  className={`w-full rounded-xl border p-3.5 text-left transition-colors cursor-pointer ${
                     selected
                       ? 'border-red-500 bg-red-500/15'
                       : 'border-white/10 bg-[#0C1424] hover:border-white/25'

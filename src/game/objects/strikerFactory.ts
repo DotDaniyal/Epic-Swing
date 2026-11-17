@@ -88,11 +88,11 @@ export function buildCustomStriker(
 
   // 1. Contact shadow beneath striker
   if (includeShadow) {
-    const shadowGeo = new THREE.PlaneGeometry(PADDLE_RADIUS * 2.55, PADDLE_RADIUS * 2.55);
+    const shadowGeo = new THREE.PlaneGeometry(PADDLE_RADIUS * 2.45, PADDLE_RADIUS * 2.45);
     const shadowMat = new THREE.MeshBasicMaterial({
       map: contactShadowTex,
       transparent: true,
-      opacity: 0.65,
+      opacity: 0.72,
       depthWrite: false,
     });
     const shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
@@ -102,12 +102,12 @@ export function buildCustomStriker(
     disposables.push(shadowGeo, shadowMat);
   }
 
-  // 2. Outer impact bumper collar (preserves exact PADDLE_RADIUS = 0.068)
-  const rimSegs = styleId === 'ice_crystal' ? 12 : 44;
+  // 2. Outer impact bumper collar (matches exact physics PADDLE_RADIUS)
+  const rimSegs = styleId === 'ice_crystal' ? 12 : 48;
   const outerRimGeo = new THREE.CylinderGeometry(
-    PADDLE_RADIUS * 0.99,
+    PADDLE_RADIUS * 0.985,
     PADDLE_RADIUS,
-    0.011,
+    0.012,
     rimSegs
   );
   const outerRimMat = new THREE.MeshStandardMaterial({
@@ -117,7 +117,7 @@ export function buildCustomStriker(
     metalness: rimMetalness,
   });
   const outerRim = new THREE.Mesh(outerRimGeo, outerRimMat);
-  outerRim.position.y = 0.006;
+  outerRim.position.y = 0.0065;
   outerRim.castShadow = true;
   outerRim.receiveShadow = true;
   group.add(outerRim);

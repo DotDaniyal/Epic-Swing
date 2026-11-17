@@ -19,19 +19,20 @@ export const PUCK_RADIUS = 0.044;
 export const PUCK_HEIGHT = 0.017;
 export const PUCK_MASS = 1.0;
 
-// +35.3% diameter increase from 0.068m baseline for comfortable finger-first control
-export const PADDLE_RADIUS = 0.092;
-export const PADDLE_BASE_HEIGHT = 0.028;
-export const PADDLE_MASS = 2.8;
+// Enlarged ergonomic striker (~20.4cm diameter on 1.24m table) matching 3D geometry
+export const PADDLE_RADIUS = 0.102;
+export const PADDLE_BASE_HEIGHT = 0.030;
+export const PADDLE_MASS = 2.9;
 
-// Physics constants calibrated for comfortable, realistic Normal gameplay speed
+// Physics constants calibrated for responsive, realistic air hockey play
 export const FIXED_DT = 1 / 240; // 240 Hz substeps for zero-tunneling collisions
 export const MAX_FRAME_DT = 0.05;
-export const MAX_PUCK_SPEED = 4.9;
-export const MAX_PADDLE_SPEED = 5.0;
-export const PUCK_AIR_DRAG = 0.42;
-export const WALL_RESTITUTION = 0.84;
-export const PADDLE_RESTITUTION = 0.82;
+export const MAX_PUCK_SPEED = 5.4;
+export const MAX_PADDLE_SPEED = 5.6;
+export const MAX_DIRECT_STRIKE_SPEED = 7.4;
+export const PUCK_AIR_DRAG = 0.34;
+export const WALL_RESTITUTION = 0.86;
+export const PADDLE_RESTITUTION = 0.84;
 export const CENTER_DIVIDER_MARGIN = 0.006;
 
 export const GAMEPLAY_SPEED_SCALES: Record<GameplaySpeedPreset, number> = {

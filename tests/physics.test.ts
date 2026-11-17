@@ -199,5 +199,72 @@ export function runPhysicsTests(): number {
     passed++;
   }
 
+  // 8. Direct 1:1 finger-to-striker control has zero trailing lag within a single frame
+  {
+    const physics = new AirHockeyPhysics();
+    physics.resetPositions('center');
+    physics.setPaddleDirectControl(1, true);
+    physics.snapPaddleTo(1, 0, 0.72);
+    assert.equal(physics.p1.vx, 0);
+    assert.equal(physics.p1.vz, 0);
+
+    // Move target sharply by 0.25m in a single 1/60s frame
+    physics.setPaddleTarget(1, 0.25, 0.52);
+    physics.step(1 / 60);
+
+    assert.ok(
+      Math.hypot(physics.p1.x - 0.25, physics.p1.z - 0.52) < 1e-6,
+      'Direct-controlled striker lands on exact target coordinate in one frame (zero trailing lag)'
+    );
+
+    // Sub-frame lock (>240Hz dt) also keeps direct paddle locked to finger target
+    physics.setPaddleTarget(1, -0.1, 0.6);
+    physics.step(1 / 480);
+    assert.ok(
+      Math.hypot(physics.p1.x - -0.1, physics.p1.z - 0.6) < 1e-6,
+      'Sub-frame step keeps direct striker glued to finger target'
+    );
+    passed++;
+  }
+
+  // 9. snapPaddleTo separates cleanly without launching puck & goal pocket guides puck inside posts
+  {
+    const physics = new AirHockeyPhysics();
+    physics.resetPositions('center');
+    physics.puck.x = 0.05;
+    physics.puck.z = 0.45;
+    physics.puck.vx = 0;
+    physics.puck.vz = 0;
+
+    // Initial touch directly on top of puck should separate cleanly with zero explosive velocity
+    physics.snapPaddleTo(1, 0.05, 0.45);
+    const sepDist = Math.hypot(
+      physics.puck.x - physics.p1.x,
+      physics.puck.z - physics.p1.z
+    );
+    assert.ok(
+      sepDist >= PADDLE_RADIUS + PUCK_RADIUS - 1e-4,
+      'snapPaddleTo separates overlapping puck and paddle'
+    );
+    assert.equal(
+      Math.hypot(physics.puck.vx, physics.puck.vz),
+      0,
+      'snapPaddleTo does not impart phantom velocity to puck'
+    );
+
+    // Puck entering goal pocket keeps X inside goal post width
+    physics.resetPositions('center');
+    physics.puck.x = GOAL_HALF_WIDTH - PUCK_RADIUS * 0.2;
+    physics.puck.z = -HALF_LENGTH - 0.01;
+    physics.puck.vx = 1.2;
+    physics.puck.vz = -1.5;
+    physics.step(1 / 60);
+    assert.ok(
+      Math.abs(physics.puck.x) <= GOAL_HALF_WIDTH - PUCK_RADIUS + 1e-4,
+      'Puck inside goal mouth is contained cleanly within goal post side walls'
+    );
+    passed++;
+  }
+
   return passed;
 }

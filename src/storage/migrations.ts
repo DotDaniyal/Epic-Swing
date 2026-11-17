@@ -33,10 +33,11 @@ export function getDefaultReducedMotion(): boolean {
 
 export const DEFAULT_MATCH_CONFIG: MatchConfig = {
   mode: 'vs_ai',
-  difficulty: 'easy',
+  difficulty: 'medium',
   gameplaySpeed: 'normal',
   durationSeconds: 180,
   customDurationMinutes: 4,
+  winningScore: 7,
   player1Name: 'Player 1',
   player2Name: 'Player 2',
   practiceSpeedMultiplier: 1.0,
@@ -48,6 +49,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   musicEnabled: true,
   musicVolume: 0.35,
   muteAll: false,
+  vibrationEnabled: true,
   quality: 'auto',
   cameraView: 'broadcast',
   reducedMotion: getDefaultReducedMotion(),
@@ -262,10 +264,27 @@ export function validateParsedSaveData(
       ? rawSpeed
       : DEFAULT_MATCH_CONFIG.gameplaySpeed;
 
+  const rawWinScore = parsed.matchConfig?.winningScore;
+  const validWinScore =
+    typeof rawWinScore === 'number' && Number.isFinite(rawWinScore)
+      ? Math.max(0, Math.min(25, Math.round(rawWinScore)))
+      : DEFAULT_MATCH_CONFIG.winningScore;
+
+  const rawDiff = parsed.matchConfig?.difficulty;
+  const validDiff =
+    rawDiff === 'easy' ||
+    rawDiff === 'medium' ||
+    rawDiff === 'hard' ||
+    rawDiff === 'expert'
+      ? rawDiff
+      : DEFAULT_MATCH_CONFIG.difficulty;
+
   const matchConfig: MatchConfig = {
     ...DEFAULT_MATCH_CONFIG,
     ...(parsed.matchConfig || {}),
+    difficulty: validDiff,
     gameplaySpeed: validSpeed,
+    winningScore: validWinScore,
     player1Name: p1.name,
     player2Name: p2.name,
   };

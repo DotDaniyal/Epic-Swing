@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Home,
+  Music,
   Play,
   RotateCcw,
   Settings,
@@ -16,9 +17,11 @@ interface PauseModalProps {
   score1: number;
   score2: number;
   muteAll: boolean;
+  musicEnabled: boolean;
   onResume: () => void;
   onRestart: () => void;
   onToggleMute: () => void;
+  onToggleMusic: () => void;
   onOpenSettings: () => void;
   onMainMenu: () => void;
   onButtonClick: () => void;
@@ -30,9 +33,11 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   score1,
   score2,
   muteAll,
+  musicEnabled,
   onResume,
   onRestart,
   onToggleMute,
+  onToggleMusic,
   onOpenSettings,
   onMainMenu,
   onButtonClick,
@@ -105,24 +110,24 @@ export const PauseModal: React.FC<PauseModalProps> = ({
             <span>Restart Match</span>
           </button>
 
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => {
                 onButtonClick();
                 onToggleMute();
               }}
-              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#0E1729] text-xs font-bold text-slate-200 hover:border-white/30 cursor-pointer"
+              className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-[#0E1729] px-2 text-xs font-bold text-slate-200 hover:border-white/30 cursor-pointer"
             >
               {muteAll ? (
                 <>
-                  <VolumeX className="w-4 h-4 text-red-400" />
+                  <VolumeX className="w-4 h-4 text-red-400 shrink-0" />
                   <span>Unmute</span>
                 </>
               ) : (
                 <>
-                  <Volume2 className="w-4 h-4 text-cyan-400" />
-                  <span>Sound On</span>
+                  <Volume2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>Sound</span>
                 </>
               )}
             </button>
@@ -131,11 +136,27 @@ export const PauseModal: React.FC<PauseModalProps> = ({
               type="button"
               onClick={() => {
                 onButtonClick();
+                onToggleMusic();
+              }}
+              className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-[#0E1729] px-2 text-xs font-bold text-slate-200 hover:border-white/30 cursor-pointer"
+            >
+              <Music
+                className={`w-4 h-4 shrink-0 ${
+                  !muteAll && musicEnabled ? 'text-cyan-400' : 'text-slate-500'
+                }`}
+              />
+              <span>{!muteAll && musicEnabled ? 'Music On' : 'Music Off'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onButtonClick();
                 onOpenSettings();
               }}
-              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#0E1729] text-xs font-bold text-slate-200 hover:border-white/30 cursor-pointer"
+              className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-[#0E1729] px-2 text-xs font-bold text-slate-200 hover:border-white/30 cursor-pointer"
             >
-              <Settings className="w-4 h-4 text-slate-300" />
+              <Settings className="w-4 h-4 text-slate-300 shrink-0" />
               <span>Settings</span>
             </button>
           </div>

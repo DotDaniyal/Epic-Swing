@@ -5,6 +5,8 @@ import {
   Monitor,
   Music,
   PlayCircle,
+  Sliders,
+  Smartphone,
   Trash2,
   Volume2,
   VolumeX,
@@ -312,6 +314,79 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               }`}
             >
               {prefs.reducedMotion ? 'On' : 'Off'}
+            </button>
+          </div>
+        </div>
+
+        {/* Touch & Haptics Section */}
+        <div className="mt-4 space-y-4 rounded-xl border border-white/10 bg-[#0C1424] p-4">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-cyan-400" />
+            <span className="font-display text-sm font-bold text-white">
+              Controls &amp; Haptics
+            </span>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between text-xs">
+              <label htmlFor="touch-sens" className="font-semibold text-slate-200">
+                Touch Sensitivity
+              </label>
+              <span className="font-mono-tabular text-cyan-300">
+                {Math.round(prefs.touchSensitivity * 100)}%
+              </span>
+            </div>
+            <div className="mt-2 flex items-center gap-3">
+              <input
+                id="touch-sens"
+                type="range"
+                min={0.75}
+                max={1.35}
+                step={0.05}
+                value={prefs.touchSensitivity}
+                onChange={(e) =>
+                  update({ touchSensitivity: parseFloat(e.target.value) })
+                }
+                className="arena-slider flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  onButtonClick();
+                  update({ touchSensitivity: 1.0 });
+                }}
+                className="min-h-[36px] rounded-lg border border-white/12 px-3 text-xs font-semibold text-slate-200 cursor-pointer"
+              >
+                1:1
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-white/10 pt-3">
+            <div className="flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-orange-400 shrink-0" />
+              <div>
+                <div className="text-xs font-semibold text-slate-200">
+                  Vibration Feedback
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Tactile pulse on heavy strikes and goals (supported devices)
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onButtonClick();
+                update({ vibrationEnabled: !prefs.vibrationEnabled });
+              }}
+              className={`min-h-[38px] rounded-lg px-3.5 text-xs font-bold cursor-pointer ${
+                prefs.vibrationEnabled
+                  ? 'bg-cyan-400 text-slate-950'
+                  : 'border border-white/12 bg-[#080F1E] text-slate-300'
+              }`}
+            >
+              {prefs.vibrationEnabled ? 'On' : 'Off'}
             </button>
           </div>
         </div>

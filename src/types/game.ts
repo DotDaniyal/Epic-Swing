@@ -1,6 +1,6 @@
 export type GameMode = 'two_player' | 'vs_ai' | 'practice';
 
-export type AIDifficulty = 'easy' | 'medium' | 'hard';
+export type AIDifficulty = 'easy' | 'medium' | 'hard' | 'expert';
 
 export type GameplaySpeedPreset = 'slow' | 'normal' | 'fast';
 
@@ -175,6 +175,7 @@ export interface MatchConfig {
   gameplaySpeed: GameplaySpeedPreset;
   durationSeconds: number;
   customDurationMinutes: number;
+  winningScore: number; // 0 = timer only, > 0 = first to N goals
   player1Name: string;
   player2Name: string;
   practiceSpeedMultiplier: number;
@@ -186,6 +187,7 @@ export interface UserPreferences {
   musicEnabled: boolean;
   musicVolume: number; // 0 to 1
   muteAll: boolean;
+  vibrationEnabled: boolean;
   quality: QualityPreset;
   cameraView: CameraViewMode;
   reducedMotion: boolean;

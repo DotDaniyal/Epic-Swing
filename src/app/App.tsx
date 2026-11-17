@@ -75,6 +75,10 @@ export default function App() {
   const saveDataRef = useRef(saveData);
   saveDataRef.current = saveData;
 
+  const liveSpeedRef = useRef<HTMLSpanElement | null>(null);
+  const topSpeedRef = useRef<HTMLSpanElement | null>(null);
+  const practiceSpeedRef = useRef<HTMLSpanElement | null>(null);
+
   const config = saveData.matchConfig;
   const prefs = saveData.preferences;
   const stats = saveData.statistics;
@@ -187,6 +191,45 @@ export default function App() {
       };
     });
   }, [commitSaveData]);
+
+  const handleToggleMusic = useCallback(() => {
+    commitSaveData((prev) => {
+      const turningOn = !prev.preferences.musicEnabled;
+      const nextPrefs: UserPreferences = {
+        ...prev.preferences,
+        musicEnabled: turningOn,
+        musicVolume:
+          turningOn && prev.preferences.musicVolume <= 0
+            ? 0.35
+            : prev.preferences.musicVolume,
+      };
+      engineRef.current?.applyPreferences(nextPrefs);
+      return {
+        ...prev,
+        preferences: nextPrefs,
+      };
+    });
+  }, [commitSaveData]);
+
+  const handleSpeedUpdate = useCallback(
+    (puckSpeedKmh: number, topSpeedKmh: number) => {
+      const spdText = String(puckSpeedKmh);
+      if (liveSpeedRef.current && liveSpeedRef.current.textContent !== spdText) {
+        liveSpeedRef.current.textContent = spdText;
+      }
+      if (
+        practiceSpeedRef.current &&
+        practiceSpeedRef.current.textContent !== spdText
+      ) {
+        practiceSpeedRef.current.textContent = spdText;
+      }
+      const peakText = String(topSpeedKmh);
+      if (topSpeedRef.current && topSpeedRef.current.textContent !== peakText) {
+        topSpeedRef.current.textContent = peakText;
+      }
+    },
+    []
+  );
 
   const handleUpdateProfile = useCallback(
     (playerId: 'p1' | 'p2', nextProfile: PlayerIdentity) => {
@@ -453,6 +496,7 @@ export default function App() {
         initialProfiles={profiles}
         onEngineReady={handleEngineReady}
         onHUDUpdate={setHud}
+        onSpeedUpdate={handleSpeedUpdate}
         onMatchFinished={handleMatchFinished}
         onCinematicGoal={() => setGoalScoredInDemo(true)}
       />
@@ -561,6 +605,9 @@ export default function App() {
           prefs={prefs}
           isFullscreen={isFullscreen}
           practiceSparring={practiceSparring}
+          liveSpeedRef={liveSpeedRef}
+          topSpeedRef={topSpeedRef}
+          practiceSpeedRef={practiceSpeedRef}
           onPause={() => {
             handleButtonClick();
             handlePause();
@@ -598,9 +645,11 @@ export default function App() {
           score1={hud.score1}
           score2={hud.score2}
           muteAll={prefs.muteAll}
+          musicEnabled={prefs.musicEnabled}
           onResume={handleResume}
           onRestart={() => startMatchWithConfig(config)}
           onToggleMute={handleToggleMute}
+          onToggleMusic={handleToggleMusic}
           onOpenSettings={() => handleOpenSettings('paused')}
           onMainMenu={handleMainMenu}
           onButtonClick={handleButtonClick}
