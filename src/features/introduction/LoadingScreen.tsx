@@ -15,8 +15,15 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
+  const completedRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+
+  const handleFinish = () => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    onCompleteRef.current();
+  };
 
   useEffect(() => {
     if (!barRef.current) return;
@@ -28,8 +35,8 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
     const tl = gsap.timeline();
     tl.fromTo(
       barRef.current,
-      { scaleX: 0.08 },
-      { scaleX: 1, duration: 0.7, ease: 'power2.out' }
+      { scaleX: 0.1 },
+      { scaleX: 1, duration: 0.5, ease: 'power2.out' }
     );
 
     return () => {
@@ -38,19 +45,19 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
   }, [reducedMotion]);
 
   useEffect(() => {
-    if (!ready || !containerRef.current) return;
-    const delay = reducedMotion ? 160 : 720;
+    if (!ready || !containerRef.current || completedRef.current) return;
+    const delay = reducedMotion ? 80 : 350;
     let fadeTween: gsap.core.Tween | null = null;
     const timer = window.setTimeout(() => {
       if (!containerRef.current || reducedMotion) {
-        onCompleteRef.current();
+        handleFinish();
         return;
       }
       fadeTween = gsap.to(containerRef.current, {
         opacity: 0,
-        duration: 0.32,
+        duration: 0.25,
         ease: 'power2.out',
-        onComplete: () => onCompleteRef.current(),
+        onComplete: handleFinish,
       });
     }, delay);
 
@@ -63,7 +70,7 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#05070C] px-6"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#05070C] px-6 transition-opacity"
     >
       <div className="flex flex-col items-center">
         <EpicSwingLogo variant="hero" />
@@ -76,7 +83,7 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
           />
         </div>
         <p className="mt-2.5 text-[11px] font-semibold tracking-widest text-slate-400 uppercase">
-          Loading 3D Arena
+          Initializing Arena
         </p>
       </div>
     </div>

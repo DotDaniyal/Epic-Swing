@@ -10,6 +10,12 @@ import {
   PADDLE_RADIUS,
 } from '@/game/constants/arena';
 import { AirHockeyPhysics } from '@/game/physics/AirHockeyPhysics';
+import {
+  getIntroLifecyclePhase,
+  hasSessionIntroPlayed,
+  markIntroCompleted,
+  transitionIntroLifecycle,
+} from '@/features/introduction/introLifecycle';
 import { formatClock, formatDurationLabel } from '@/utils/format';
 
 export function runAIAndControlsTests(): number {
@@ -233,6 +239,18 @@ export function runAIAndControlsTests(): number {
       ai.getDynamicReactionMultiplier() > 1.20,
       'Dynamic balancing adds reaction delay when AI leads'
     );
+    passed++;
+  }
+
+  // 10. Single Intro Lifecycle state transitions & session idempotence
+  {
+    assert.equal(typeof hasSessionIntroPlayed(), 'boolean');
+    transitionIntroLifecycle('INTRO_PLAYING');
+    assert.equal(getIntroLifecyclePhase(), 'INTRO_PLAYING');
+
+    markIntroCompleted();
+    assert.equal(hasSessionIntroPlayed(), true, 'Session intro is marked as played');
+    assert.equal(getIntroLifecyclePhase(), 'MAIN_MENU', 'Lifecycle advances to MAIN_MENU');
     passed++;
   }
 

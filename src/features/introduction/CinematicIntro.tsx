@@ -8,6 +8,7 @@ import {
 } from '@/animations/timelines';
 import { EpicSwingLogo } from '@/components/common/EpicSwingLogo';
 import type { CinematicStage } from '@/game/engine/AirHockeyEngine';
+import { markIntroCompleted } from './introLifecycle';
 
 interface CinematicIntroProps {
   reducedMotion: boolean;
@@ -44,6 +45,8 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
   const ringSweepRef = useRef<HTMLDivElement | null>(null);
   const particlesWrapRef = useRef<HTMLDivElement | null>(null);
   const completedRef = useRef(false);
+  const hasStartedRef = useRef(false);
+
   const callbacksRef = useRef({
     onStageChange,
     onPlaySweep,
@@ -70,6 +73,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
     if (completedRef.current) return;
     completedRef.current = true;
     killIntroTweens();
+    markIntroCompleted();
     callbacksRef.current.onStageChange('none');
     callbacksRef.current.onComplete();
   };
@@ -81,9 +85,12 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
   }, [goalScoredInDemo, sceneNum]);
 
   useEffect(() => {
+    if (hasStartedRef.current) return;
+    hasStartedRef.current = true;
+
     if (reducedMotion) {
       callbacksRef.current.onStageChange('menu_blend');
-      const t = window.setTimeout(finishIntro, 900);
+      const t = window.setTimeout(finishIntro, 600);
       return () => {
         window.clearTimeout(t);
         killIntroTweens();
@@ -98,7 +105,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
     callbacksRef.current.onPlaySweep();
     animateIntroScene1Particles(particlesWrapRef.current, sweepRef.current);
 
-    // SCENE 2: Metallic EPIC SWING Logo Reveal
+    // SCENE 2: Metallic EPIC SWING Logo Reveal (The single authoritative logo entrance)
     timers.push(
       window.setTimeout(() => {
         setSceneNum(2);
@@ -115,7 +122,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
       }, INTRO_TIMINGS_MS.TABLE_REVEAL)
     );
 
-    // SCENE 4: Animated 3D Gameplay Cinematic + Goal + Score + Logo
+    // SCENE 4: Animated 3D Gameplay Cinematic + Corner Strike
     timers.push(
       window.setTimeout(() => {
         setSceneNum(4);
@@ -151,7 +158,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
     };
     // Run intro timeline once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reducedMotion]);
 
   const isDarkOverlayScene = sceneNum === 1 || sceneNum === 2;
 
@@ -211,7 +218,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
         </>
       )}
 
-      {/* Scene 2: EPIC SWING Logo Reveal */}
+      {/* Scene 2: EPIC SWING Logo Reveal (The single, definitive logo reveal) */}
       {sceneNum === 2 && (
         <div
           ref={logoWrapRef}
@@ -234,13 +241,13 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
               Precision 3D Arena
             </div>
             <div className="mt-0.5 font-display text-sm sm:text-base font-bold text-white">
-              Custom Strikers · Dynamic Lighting · 240Hz Physics
+              Direct-Touch Strikers · Dynamic Lighting · 240Hz Physics
             </div>
           </div>
         </div>
       )}
 
-      {/* Scene 4: Gameplay Cinematic Scoreboard + Goal + Logo Lockup */}
+      {/* Scene 4: Gameplay Cinematic Scoreboard + Goal Celebration */}
       {sceneNum === 4 && (
         <div className="pointer-events-none fixed inset-0 flex flex-col items-center justify-between py-6 px-4">
           <div className="flex items-center gap-4 rounded-xl border border-white/15 bg-[#070B14]/92 px-5 py-2 shadow-2xl">
@@ -260,7 +267,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
           </div>
 
           {showGoalBanner && (
-            <div className="animate-goal-in flex flex-col items-center gap-4">
+            <div className="animate-goal-in flex flex-col items-center gap-2">
               <div className="rounded-2xl border-2 border-cyan-400 bg-[#070B14]/95 px-8 py-4 text-center shadow-2xl">
                 <div className="font-display text-4xl sm:text-5xl font-extrabold text-cyan-300">
                   GOAL!
@@ -269,7 +276,6 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
                   108 km/h Top Corner Strike
                 </div>
               </div>
-              <EpicSwingLogo variant="hero" />
             </div>
           )}
 

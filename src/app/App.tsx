@@ -13,6 +13,11 @@ import {
 import { StoreScreen } from '@/features/game-store/StoreScreen';
 import { CinematicIntro } from '@/features/introduction/CinematicIntro';
 import { LoadingScreen } from '@/features/introduction/LoadingScreen';
+import {
+  hasSessionIntroPlayed,
+  markIntroCompleted,
+  triggerManualIntroReplay,
+} from '@/features/introduction/introLifecycle';
 import { InstructionsScreen } from '@/features/main-menu/InstructionsScreen';
 import { MainMenu } from '@/features/main-menu/MainMenu';
 import { MatchSetupWizard } from '@/features/main-menu/MatchSetupWizard';
@@ -94,7 +99,13 @@ export default function App() {
     ensureDailyChallengesCurrent(loadSaveData())
   );
 
-  const [screen, setScreen] = useState<ScreenId>('loading');
+  const [screen, setScreen] = useState<ScreenId>(() => {
+    // If the intro has already played in this browser session, go straight to menu!
+    if (hasSessionIntroPlayed()) {
+      return 'menu';
+    }
+    return 'loading';
+  });
   const [settingsReturnScreen, setSettingsReturnScreen] =
     useState<ScreenId>('menu');
   const [engineReady, setEngineReady] = useState(false);
@@ -150,13 +161,13 @@ export default function App() {
     setScreen((prev) => {
       if (prev !== 'loading') return prev;
       const curPrefs = saveDataRef.current.preferences;
-      const shouldShowIntro =
-        !curPrefs.hasSeenIntro || curPrefs.introPreference === 'auto';
-      if (shouldShowIntro) {
-        setGoalScoredInDemo(false);
-        return 'intro';
+      // Single intro guarantee: only play on genuine first page open if not skipped or seen
+      if (hasSessionIntroPlayed() || curPrefs.introPreference === 'skip' || curPrefs.hasSeenIntro) {
+        markIntroCompleted();
+        return 'menu';
       }
-      return 'menu';
+      setGoalScoredInDemo(false);
+      return 'intro';
     });
   }, []);
 
@@ -165,6 +176,7 @@ export default function App() {
   }, []);
 
   const handleIntroComplete = useCallback(() => {
+    markIntroCompleted();
     commitSaveData((prev) => ({
       ...prev,
       preferences: {
@@ -177,6 +189,7 @@ export default function App() {
   }, [commitSaveData]);
 
   const handleReplayIntro = useCallback(() => {
+    triggerManualIntroReplay();
     setGoalScoredInDemo(false);
     setScreen('intro');
   }, []);

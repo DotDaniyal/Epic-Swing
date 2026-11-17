@@ -81,7 +81,26 @@ export class ArenaCameraController {
   }): void {
     this.computeTargets(params);
 
-    const camDamp = params.phase === 'cinematic' ? 3.8 : 6.5;
+    if (params.phase !== 'cinematic') {
+      this.camera.up.copy(this.targetUp);
+      this.camera.position.copy(this.targetCamPos);
+      this.currentLookAt.copy(this.targetLookAt);
+
+      if (this.camShake > 0.0002) {
+        const sx = (Math.random() - 0.5) * 2 * this.camShake;
+        const sz = (Math.random() - 0.5) * 2 * this.camShake;
+        this.camera.position.x += sx;
+        this.camera.position.z += sz;
+        this.camShake *= Math.exp(-16 * params.dt);
+      } else {
+        this.camShake = 0;
+      }
+
+      this.camera.lookAt(this.currentLookAt);
+      return;
+    }
+
+    const camDamp = 3.8;
     this.camera.up.lerp(this.targetUp, 1 - Math.exp(-camDamp * params.dt)).normalize();
 
     this.camera.position.x = THREE.MathUtils.damp(
@@ -120,16 +139,6 @@ export class ArenaCameraController {
       camDamp,
       params.dt
     );
-
-    if (this.camShake > 0.0002) {
-      const sx = (Math.random() - 0.5) * 2 * this.camShake;
-      const sz = (Math.random() - 0.5) * 2 * this.camShake;
-      this.camera.position.x += sx;
-      this.camera.position.z += sz;
-      this.camShake *= Math.exp(-16 * params.dt);
-    } else {
-      this.camShake = 0;
-    }
 
     this.camera.lookAt(this.currentLookAt);
   }

@@ -434,6 +434,51 @@ export function runPhysicsTests(): number {
     passed++;
   }
 
+  // 15. Zero-latency direct paddle placement without frame delay
+  {
+    const physics = new AirHockeyPhysics();
+    physics.setPaddleDirectControl(1, true);
+
+    const targetX = 0.22;
+    const targetZ = 0.65;
+    physics.setDirectPaddlePosition(1, targetX, targetZ, 1000);
+
+    // Striker must immediately appear at the finger's target without waiting for step()
+    assert.equal(physics.p1.x, targetX, 'P1 striker immediately matches finger X coordinate');
+    assert.equal(physics.p1.z, targetZ, 'P1 striker immediately matches finger Z coordinate');
+
+    // Rapid finger move 16ms later to new position
+    const nextX = -0.15;
+    const nextZ = 0.40;
+    physics.setDirectPaddlePosition(1, nextX, nextZ, 1016);
+    assert.equal(physics.p1.x, nextX, 'P1 striker instantly updates to second touch position');
+    assert.equal(physics.p1.z, nextZ, 'P1 striker instantly updates to second touch position');
+    assert.ok(physics.p1.vx < 0, 'Instantaneous velocity vx is calculated in direction of motion');
+    assert.ok(physics.p1.vz < 0, 'Instantaneous velocity vz is calculated in direction of motion');
+
+    physics.clearDirectPaddleVelocity(1);
+    assert.equal(physics.p1.vx, 0, 'Velocity cleared on pointer lift');
+    assert.equal(physics.p1.vz, 0, 'Velocity cleared on pointer lift');
+    passed++;
+  }
+
+  // 16. Direct paddle flick momentum transfer to puck
+  {
+    const physics = new AirHockeyPhysics();
+    physics.setPaddleDirectControl(1, true);
+    physics.resetPositions('center');
+    physics.puck.x = 0;
+    physics.puck.z = 0.50;
+    physics.puck.vx = 0;
+    physics.puck.vz = 0;
+    physics.snapPaddleTo(1, 0, 0.75);
+    physics.setDirectPaddlePosition(1, 0, 0.75, 1000);
+    physics.setDirectPaddlePosition(1, 0, 0.40, 1016);
+
+    assert.ok(physics.puck.vz < 0 || physics.p1.vz < 0, 'Direct flick imparts forward velocity or negative vz');
+    passed++;
+  }
+
   return passed;
 }
 

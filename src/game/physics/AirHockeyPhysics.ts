@@ -143,6 +143,11 @@ export class AirHockeyPhysics {
   private simTime = 0;
   private goalTriggered = false;
   private events: PhysicsEvents;
+  private lastDirectInputTime: Record<1 | 2, number> = { 1: 0, 2: 0 };
+  private prevDirectPos: Record<1 | 2, { x: number; z: number }> = {
+    1: { x: 0, z: HALF_LENGTH - 0.34 },
+    2: { x: 0, z: -(HALF_LENGTH - 0.34) },
+  };
 
   constructor(events: PhysicsEvents = {}) {
     this.events = events;
@@ -252,6 +257,10 @@ export class AirHockeyPhysics {
     this.lastPaddleSoundTime = { 1: -1, 2: -1 };
     this.goalTriggered = false;
     this.aiStrikePower = 0.55;
+    this.lastDirectInputTime[1] = 0;
+    this.lastDirectInputTime[2] = 0;
+    this.prevDirectPos[1] = { x: 0, z: HALF_LENGTH - 0.34 };
+    this.prevDirectPos[2] = { x: 0, z: -(HALF_LENGTH - 0.34) };
   }
 
   public launchPracticePuck(speedMultiplier: number): void {
@@ -280,6 +289,70 @@ export class AirHockeyPhysics {
     const clamped = this.clampPaddleCoords(tx, tz, pad);
     pad.targetX = clamped.x;
     pad.targetZ = clamped.z;
+    if (pad.directControl) {
+      pad.x = clamped.x;
+      pad.z = clamped.z;
+    }
+  }
+
+  /**
+   * ZERO-LATENCY DIRECT TOUCH MOVEMENT:
+   * Instantly places the striker underneath the finger's playable coordinate,
+   * derives instantaneous striking velocity for realistic momentum transfer,
+   * and runs instant puck collision check so fast sweeps don't tunnel.
+   */
+  public setDirectPaddlePosition(
+    player: 1 | 2,
+    tx: number,
+    tz: number,
+    timestampMs?: number
+  ): void {
+    const pad = player === 1 ? this.p1 : this.p2;
+    const clamped = this.clampPaddleCoords(tx, tz, pad);
+    const now =
+      typeof timestampMs === 'number' && Number.isFinite(timestampMs)
+        ? timestampMs
+        : performance.now();
+
+    const lastTime = this.lastDirectInputTime[player];
+    const prevPos = this.prevDirectPos[player];
+    const dt = lastTime > 0 ? (now - lastTime) / 1000 : 0;
+
+    if (dt > 0.0005 && dt < 0.25) {
+      const rawVx = (clamped.x - prevPos.x) / dt;
+      const rawVz = (clamped.z - prevPos.z) / dt;
+      const rawSpeed = Math.hypot(rawVx, rawVz);
+      const maxDirectSpeed = 18.0;
+      const speedRatio =
+        rawSpeed > maxDirectSpeed ? maxDirectSpeed / rawSpeed : 1.0;
+      pad.vx = rawVx * speedRatio * 0.9 + pad.vx * 0.1;
+      pad.vz = rawVz * speedRatio * 0.9 + pad.vz * 0.1;
+    } else if (dt >= 0.25) {
+      pad.vx = 0;
+      pad.vz = 0;
+    }
+
+    this.lastDirectInputTime[player] = now;
+    prevPos.x = clamped.x;
+    prevPos.z = clamped.z;
+
+    pad.x = clamped.x;
+    pad.z = clamped.z;
+    pad.targetX = clamped.x;
+    pad.targetZ = clamped.z;
+
+    if (!this.goalTriggered) {
+      this.resolvePaddleCollisionForPuck(this.puck, pad, player);
+      if (this.bonusPuck.active) {
+        this.resolvePaddleCollisionForPuck(this.bonusPuck, pad, player);
+      }
+    }
+  }
+
+  public clearDirectPaddleVelocity(player: 1 | 2): void {
+    const pad = player === 1 ? this.p1 : this.p2;
+    pad.vx = 0;
+    pad.vz = 0;
   }
 
   /**
@@ -295,6 +368,10 @@ export class AirHockeyPhysics {
     pad.targetZ = clamped.z;
     pad.vx = 0;
     pad.vz = 0;
+
+    this.prevDirectPos[player].x = clamped.x;
+    this.prevDirectPos[player].z = clamped.z;
+    this.lastDirectInputTime[player] = performance.now();
 
     this.separatePaddleFromPuckOnSnap(pad, player, this.puck);
     if (this.bonusPuck.active) {
@@ -324,7 +401,7 @@ export class AirHockeyPhysics {
 
   public nudgePaddleTarget(player: 1 | 2, dx: number, dz: number): void {
     const pad = player === 1 ? this.p1 : this.p2;
-    this.setPaddleTarget(player, pad.targetX + dx, pad.targetZ + dz);
+    this.setDirectPaddlePosition(player, pad.x + dx, pad.z + dz);
   }
 
   private createSubstepPlan(
@@ -333,7 +410,10 @@ export class AirHockeyPhysics {
     totalFrameDt: number,
     strikeBoost: number
   ): PaddleSubstepPlan {
-    if (!pad.directControl || substeps <= 0 || totalFrameDt <= 0) {
+    if (pad.directControl) {
+      return { direct: true, stepDx: 0, stepDz: 0, velX: pad.vx, velZ: pad.vz };
+    }
+    if (substeps <= 0 || totalFrameDt <= 0) {
       return { direct: false, stepDx: 0, stepDz: 0, velX: 0, velZ: 0 };
     }
     const clamped = this.clampPaddleCoords(pad.targetX, pad.targetZ, pad);
@@ -341,31 +421,17 @@ export class AirHockeyPhysics {
     const dz = clamped.z - pad.z;
     const dist = Math.hypot(dx, dz);
     if (dist < 1e-6) {
-      return { direct: true, stepDx: 0, stepDz: 0, velX: 0, velZ: 0 };
+      return { direct: false, stepDx: 0, stepDz: 0, velX: 0, velZ: 0 };
     }
 
     const rawVelX = dx / totalFrameDt;
     const rawVelZ = dz / totalFrameDt;
-    const rawSpeed = Math.hypot(rawVelX, rawVelZ);
-    const maxStrike =
-      MAX_DIRECT_STRIKE_SPEED *
-      Math.max(0.82, Math.min(1.35, this.speedScale)) *
-      strikeBoost;
-
-    let velX = rawVelX;
-    let velZ = rawVelZ;
-    if (rawSpeed > maxStrike) {
-      const ratio = maxStrike / rawSpeed;
-      velX *= ratio;
-      velZ *= ratio;
-    }
-
     return {
-      direct: true,
+      direct: false,
       stepDx: dx / substeps,
       stepDz: dz / substeps,
-      velX,
-      velZ,
+      velX: rawVelX,
+      velZ: rawVelZ,
     };
   }
 
@@ -610,14 +676,16 @@ export class AirHockeyPhysics {
     plan: PaddleSubstepPlan,
     strikeBoost: number
   ): void {
-    if (plan.direct) {
-      pad.x += plan.stepDx;
-      pad.z += plan.stepDz;
-      pad.vx = plan.velX;
-      pad.vz = plan.velZ;
-      const postClamp = this.clampPaddleCoords(pad.x, pad.z, pad);
-      pad.x = postClamp.x;
-      pad.z = postClamp.z;
+    if (pad.directControl) {
+      // Direct touch paddle stays directly at user's touch coordinate with 0 lag.
+      // Gently decay velocity when finger stops moving so paddle doesn't retain phantom speed.
+      const playerNum = pad === this.p1 ? 1 : 2;
+      const timeSinceInput =
+        performance.now() - this.lastDirectInputTime[playerNum];
+      if (timeSinceInput > 40) {
+        pad.vx *= Math.exp(-25 * dt);
+        pad.vz *= Math.exp(-25 * dt);
+      }
       return;
     }
 

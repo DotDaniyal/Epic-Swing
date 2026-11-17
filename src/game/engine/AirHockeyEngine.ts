@@ -225,7 +225,8 @@ export class AirHockeyEngine {
       canvas,
       this.cameraController.camera,
       this.physics,
-      () => this.audio.unlock()
+      () => this.audio.unlock(),
+      (player, x, z) => this.syncPaddleVisualPosition(player, x, z)
     );
 
     this.applyPreferences(this.prefs);
@@ -462,12 +463,20 @@ export class AirHockeyEngine {
     }
   }
 
+  public syncPaddleVisualPosition(player: 1 | 2, x: number, z: number): void {
+    if (player === 1) {
+      this.sceneObjects.paddle1Group.position.set(x, SURFACE_Y, z);
+    } else {
+      this.sceneObjects.paddle2Group.position.set(x, SURFACE_Y, z);
+    }
+  }
+
   private syncPaddleControlModes(): void {
-    const activePlay = this.phase === 'active';
-    this.physics.setPaddleDirectControl(1, activePlay);
+    const isInteractive = this.phase !== 'cinematic';
+    this.physics.setPaddleDirectControl(1, isInteractive);
     this.physics.setPaddleDirectControl(
       2,
-      activePlay && this.config.mode === 'two_player'
+      isInteractive && this.config.mode === 'two_player'
     );
   }
 
