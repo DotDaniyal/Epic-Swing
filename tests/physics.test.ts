@@ -156,13 +156,46 @@ export function runPhysicsTests(): number {
     passed++;
   }
 
-  // 6. Practice launch applies speed scale
+  // 6. Practice launch applies and clamps speed scale safely
   {
     const physics = new AirHockeyPhysics();
     physics.launchPracticePuck(1.25);
     assert.equal(physics.speedScale, 1.25);
     const spd = Math.hypot(physics.puck.vx, physics.puck.vz);
     assert.ok(spd > 2.0, 'Practice puck launched with non-trivial velocity');
+
+    physics.launchPracticePuck(10);
+    assert.equal(physics.speedScale, 2.0, 'High speedMultiplier clamped to 2.0');
+
+    physics.launchPracticePuck(0.1);
+    assert.equal(physics.speedScale, 0.5, 'Low speedMultiplier clamped to 0.5');
+
+    physics.launchPracticePuck(Number.NaN);
+    assert.equal(physics.speedScale, 1.0, 'NaN speedMultiplier falls back to 1.0');
+    passed++;
+  }
+
+  // 7. Paddle pinning puck against side rail keeps puck inside table bounds
+  {
+    const physics = new AirHockeyPhysics();
+    physics.resetPositions('center');
+    physics.puck.x = HALF_WIDTH - PUCK_RADIUS - 0.005;
+    physics.puck.z = 0.45;
+    physics.puck.vx = 0;
+    physics.puck.vz = 0;
+
+    physics.p1.x = physics.puck.x - PADDLE_RADIUS - 0.01;
+    physics.p1.z = 0.45;
+    // Drive P1 hard rightward into the puck against the right wall
+    physics.setPaddleTarget(1, HALF_WIDTH, 0.45);
+    for (let i = 0; i < 6; i++) {
+      physics.step(1 / 60);
+    }
+
+    assert.ok(
+      physics.puck.x <= HALF_WIDTH - PUCK_RADIUS + 1e-4,
+      'Puck pinned against right rail remains strictly inside table bounds'
+    );
     passed++;
   }
 

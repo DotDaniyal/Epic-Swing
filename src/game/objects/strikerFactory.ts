@@ -241,14 +241,15 @@ export function buildCustomStriker(
     animatedParts.push({ obj: halo, speed: -3.2 });
   }
 
-  // 7. Ergonomic grip knob
+  // 7. Ergonomic grip knob (scaled proportionally to larger finger-friendly deck)
+  const knobScale = PADDLE_RADIUS / 0.068;
   const knobProfile = [
     new THREE.Vector2(0.0, PADDLE_BASE_HEIGHT + 0.002),
-    new THREE.Vector2(0.023, PADDLE_BASE_HEIGHT + 0.002),
-    new THREE.Vector2(0.017, PADDLE_BASE_HEIGHT + 0.02),
-    new THREE.Vector2(0.027, PADDLE_BASE_HEIGHT + 0.04),
-    new THREE.Vector2(0.025, PADDLE_BASE_HEIGHT + 0.05),
-    new THREE.Vector2(0.0, PADDLE_BASE_HEIGHT + 0.054),
+    new THREE.Vector2(0.023 * knobScale, PADDLE_BASE_HEIGHT + 0.002),
+    new THREE.Vector2(0.017 * knobScale, PADDLE_BASE_HEIGHT + 0.022),
+    new THREE.Vector2(0.027 * knobScale, PADDLE_BASE_HEIGHT + 0.042),
+    new THREE.Vector2(0.025 * knobScale, PADDLE_BASE_HEIGHT + 0.052),
+    new THREE.Vector2(0.0, PADDLE_BASE_HEIGHT + 0.056),
   ];
   const knobGeo = new THREE.LatheGeometry(knobProfile, 32);
   const knobMat = new THREE.MeshStandardMaterial({
@@ -264,8 +265,8 @@ export function buildCustomStriker(
   // 8. Top emblem cap
   const capGeo =
     styleId === 'ice_crystal'
-      ? new THREE.CylinderGeometry(0.02, 0.022, 0.006, 6)
-      : new THREE.CylinderGeometry(0.02, 0.022, 0.005, 32);
+      ? new THREE.CylinderGeometry(0.02 * knobScale, 0.022 * knobScale, 0.006, 6)
+      : new THREE.CylinderGeometry(0.02 * knobScale, 0.022 * knobScale, 0.005, 32);
   const capMat = new THREE.MeshStandardMaterial({
     color: brightColor,
     emissive: mainColor,
@@ -274,7 +275,7 @@ export function buildCustomStriker(
     metalness: 0.35,
   });
   const cap = new THREE.Mesh(capGeo, capMat);
-  cap.position.y = PADDLE_BASE_HEIGHT + 0.0535;
+  cap.position.y = PADDLE_BASE_HEIGHT + 0.0555;
   group.add(cap);
   disposables.push(capGeo, capMat);
 

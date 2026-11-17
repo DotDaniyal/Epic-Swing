@@ -48,6 +48,7 @@ export class AirHockeyEngine {
   private readonly isSoftwareGl: boolean;
   private readonly clock = new THREE.Clock();
   private frameId = 0;
+  private frameIsTimer = false;
   private disposed = false;
   private elapsedTime = 0;
 
@@ -56,6 +57,7 @@ export class AirHockeyEngine {
   private config: MatchConfig;
   private prefs: UserPreferences;
   private phase: MatchPhase = 'idle';
+  private phaseBeforePause: 'active' | 'countdown' | 'goal_pause' = 'active';
   private score1 = 0;
   private score2 = 0;
   private remainingSeconds = 180;
@@ -266,12 +268,19 @@ export class AirHockeyEngine {
     } else if (quality === 'balanced') {
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.needsUpdate = true;
       this.vfx.enabled = true;
     } else {
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.needsUpdate = true;
       this.vfx.enabled = true;
     }
+
+    if (!this.vfx.enabled || this.vfx.reducedMotion) {
+      this.vfx.clearTrail();
+    }
+    this.updateSize();
   }
 
   private resolveQuality(preset: QualityPreset): 'high' | 'balanced' | 'low' {
@@ -293,12 +302,20 @@ export class AirHockeyEngine {
       config.mode === 'practice' ? 0 : config.durationSeconds;
     this.lastGoalScorer = null;
     this.lastGoalSpeedKmh = 0;
+    this.pendingServe = 'center';
     this.winner = null;
+    this.hitstopTimer = 0;
+    this.goalFlashP1 = 0;
+    this.goalFlashP2 = 0;
+    this.hudSyncAccumulator = 0;
+    this.phaseBeforePause = 'active';
+    this.cameraController.setShake(0);
     this.physics.topSpeedKmh = 0;
     this.physics.totalHits = 0;
     this.physics.resetPositions('center');
     this.vfx.clearTrail();
     this.ai.reset();
+    this.clock.getDelta();
 
     if (config.mode === 'practice') {
       this.phase = 'active';
@@ -317,6 +334,13 @@ export class AirHockeyEngine {
   public enterIdleMenu(): void {
     this.cinematic.stage = 'none';
     this.phase = 'idle';
+    this.phaseBeforePause = 'active';
+    this.hitstopTimer = 0;
+    this.goalFlashP1 = 0;
+    this.goalFlashP2 = 0;
+    this.cameraController.setShake(0);
+    this.sceneObjects.goalLightP1.intensity = 0;
+    this.sceneObjects.goalLightP2.intensity = 0;
     this.input.setActive(false);
     this.physics.resetPositions('center');
     this.vfx.clearTrail();
@@ -329,6 +353,7 @@ export class AirHockeyEngine {
       this.phase === 'countdown' ||
       this.phase === 'goal_pause'
     ) {
+      this.phaseBeforePause = this.phase;
       this.phase = 'paused';
       this.input.setActive(false);
       this.pushHUD();
@@ -337,8 +362,9 @@ export class AirHockeyEngine {
 
   public resumeMatch(): void {
     if (this.phase === 'paused') {
-      this.phase = 'active';
-      this.input.setActive(true);
+      this.phase = this.phaseBeforePause;
+      this.input.setActive(this.phase === 'active');
+      this.clock.getDelta();
       this.pushHUD();
     }
   }
@@ -548,6 +574,7 @@ export class AirHockeyEngine {
     this.renderer.render(this.scene, this.cameraController.camera);
 
     if (this.isSoftwareGl) {
+      this.frameIsTimer = true;
       scheduleAfterDraw(
         this.renderer.getContext() as WebGL2RenderingContext | null,
         () => this.disposed,
@@ -557,12 +584,14 @@ export class AirHockeyEngine {
         this.tick
       );
     } else {
+      this.frameIsTimer = false;
       this.frameId = requestAnimationFrame(this.tick);
     }
   };
 
   private startLoop(): void {
     if (this.isSoftwareGl) {
+      this.frameIsTimer = true;
       scheduleAfterDraw(
         this.renderer.getContext() as WebGL2RenderingContext | null,
         () => this.disposed,
@@ -572,14 +601,22 @@ export class AirHockeyEngine {
         this.tick
       );
     } else {
+      this.frameIsTimer = false;
       this.frameId = requestAnimationFrame(this.tick);
+    }
+  }
+
+  private cancelScheduledFrame(): void {
+    if (this.frameIsTimer) {
+      window.clearTimeout(this.frameId);
+    } else {
+      cancelAnimationFrame(this.frameId);
     }
   }
 
   private handleContextLost = (e: Event): void => {
     e.preventDefault();
-    cancelAnimationFrame(this.frameId);
-    window.clearTimeout(this.frameId);
+    this.cancelScheduledFrame();
     this.callbacks.onContextLost?.();
   };
 
@@ -599,8 +636,7 @@ export class AirHockeyEngine {
 
   public dispose(): void {
     this.disposed = true;
-    cancelAnimationFrame(this.frameId);
-    window.clearTimeout(this.frameId);
+    this.cancelScheduledFrame();
     this.resizeObserver.disconnect();
     this.input.dispose();
     this.vfx.dispose();

@@ -15,13 +15,14 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
     if (!barRef.current) return;
     if (reducedMotion) {
       barRef.current.style.transform = 'scaleX(1)';
-      const t = window.setTimeout(onComplete, 220);
-      return () => window.clearTimeout(t);
+      return;
     }
 
     const tl = gsap.timeline();
@@ -34,26 +35,30 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
     return () => {
       tl.kill();
     };
-  }, [reducedMotion, onComplete]);
+  }, [reducedMotion]);
 
   useEffect(() => {
     if (!ready || !containerRef.current) return;
     const delay = reducedMotion ? 160 : 720;
+    let fadeTween: gsap.core.Tween | null = null;
     const timer = window.setTimeout(() => {
       if (!containerRef.current || reducedMotion) {
-        onComplete();
+        onCompleteRef.current();
         return;
       }
-      gsap.to(containerRef.current, {
+      fadeTween = gsap.to(containerRef.current, {
         opacity: 0,
         duration: 0.32,
         ease: 'power2.out',
-        onComplete,
+        onComplete: () => onCompleteRef.current(),
       });
     }, delay);
 
-    return () => window.clearTimeout(timer);
-  }, [ready, reducedMotion, onComplete]);
+    return () => {
+      window.clearTimeout(timer);
+      fadeTween?.kill();
+    };
+  }, [ready, reducedMotion]);
 
   return (
     <div

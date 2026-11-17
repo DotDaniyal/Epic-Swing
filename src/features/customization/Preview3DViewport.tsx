@@ -265,7 +265,11 @@ export const Preview3DViewport: React.FC<Preview3DViewportProps> = ({
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
-      canvas.setPointerCapture(e.pointerId);
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore capture errors on synthetic pointers
+      }
     };
     const onMove = (e: PointerEvent) => {
       if (!dragging) return;
@@ -278,15 +282,23 @@ export const Preview3DViewport: React.FC<Preview3DViewportProps> = ({
     };
     const onUp = (e: PointerEvent) => {
       dragging = false;
-      if (canvas.hasPointerCapture(e.pointerId)) {
-        canvas.releasePointerCapture(e.pointerId);
+      try {
+        if (canvas.hasPointerCapture(e.pointerId)) {
+          canvas.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Ignore release errors if pointer capture already ended
       }
+    };
+    const onLostCapture = () => {
+      dragging = false;
     };
 
     canvas.addEventListener('pointerdown', onDown);
     canvas.addEventListener('pointermove', onMove);
     canvas.addEventListener('pointerup', onUp);
     canvas.addEventListener('pointercancel', onUp);
+    canvas.addEventListener('lostpointercapture', onLostCapture);
 
     const updateSize = () => {
       const r = container.getBoundingClientRect();
@@ -302,8 +314,27 @@ export const Preview3DViewport: React.FC<Preview3DViewportProps> = ({
 
     const clock = new THREE.Clock();
     let frameId = 0;
+    let frameIsTimer = false;
     let disposed = false;
     let elapsed = 0;
+
+    const scheduleNextFrame = () => {
+      if (disposed) return;
+      if (softGl) {
+        frameIsTimer = true;
+        scheduleAfterDraw(
+          renderer.getContext() as WebGL2RenderingContext | null,
+          () => disposed,
+          (id) => {
+            frameId = id;
+          },
+          tick
+        );
+      } else {
+        frameIsTimer = false;
+        frameId = requestAnimationFrame(tick);
+      }
+    };
 
     const tick = () => {
       if (disposed) return;
@@ -317,43 +348,25 @@ export const Preview3DViewport: React.FC<Preview3DViewportProps> = ({
       activeStriker?.update(elapsed, dt);
       renderer.render(scene, camera);
 
-      if (softGl) {
-        scheduleAfterDraw(
-          renderer.getContext() as WebGL2RenderingContext | null,
-          () => disposed,
-          (id) => {
-            frameId = id;
-          },
-          tick
-        );
-      } else {
-        frameId = requestAnimationFrame(tick);
-      }
+      scheduleNextFrame();
     };
 
-    if (softGl) {
-      scheduleAfterDraw(
-        renderer.getContext() as WebGL2RenderingContext | null,
-        () => disposed,
-        (id) => {
-          frameId = id;
-        },
-        tick
-      );
-    } else {
-      frameId = requestAnimationFrame(tick);
-    }
+    scheduleNextFrame();
 
     return () => {
       disposed = true;
       rebuildFnRef.current = null;
-      cancelAnimationFrame(frameId);
-      window.clearTimeout(frameId);
+      if (frameIsTimer) {
+        window.clearTimeout(frameId);
+      } else {
+        cancelAnimationFrame(frameId);
+      }
       ro.disconnect();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onUp);
+      canvas.removeEventListener('lostpointercapture', onLostCapture);
       clearHolder();
       brushedTex.dispose();
       carbonTex.dispose();

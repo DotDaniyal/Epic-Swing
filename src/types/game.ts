@@ -2,6 +2,8 @@ export type GameMode = 'two_player' | 'vs_ai' | 'practice';
 
 export type AIDifficulty = 'easy' | 'medium' | 'hard';
 
+export type GameplaySpeedPreset = 'slow' | 'normal' | 'fast';
+
 export type QualityPreset = 'auto' | 'high' | 'balanced' | 'low';
 
 export type CameraViewMode = 'broadcast' | 'top_down';
@@ -170,6 +172,7 @@ export interface DailyChallengesState {
 export interface MatchConfig {
   mode: GameMode;
   difficulty: AIDifficulty;
+  gameplaySpeed: GameplaySpeedPreset;
   durationSeconds: number;
   customDurationMinutes: number;
   player1Name: string;
@@ -189,6 +192,7 @@ export interface UserPreferences {
   mirrorTopScoreOnMobile: boolean;
   introPreference: IntroPreference;
   hasSeenIntro: boolean;
+  touchSensitivity: number; // 0.75 to 1.35
 }
 
 export interface MatchRecord {

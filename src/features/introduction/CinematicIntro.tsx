@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import gsap from 'gsap';
 import { FastForward } from 'lucide-react';
 import {
   animateIntroScene1Particles,
@@ -43,12 +44,34 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
   const ringSweepRef = useRef<HTMLDivElement | null>(null);
   const particlesWrapRef = useRef<HTMLDivElement | null>(null);
   const completedRef = useRef(false);
+  const callbacksRef = useRef({
+    onStageChange,
+    onPlaySweep,
+    onPlayImpact,
+    onComplete,
+  });
+  callbacksRef.current = {
+    onStageChange,
+    onPlaySweep,
+    onPlayImpact,
+    onComplete,
+  };
+
+  const killIntroTweens = () => {
+    if (particlesWrapRef.current) {
+      gsap.killTweensOf(particlesWrapRef.current.children);
+    }
+    if (sweepRef.current) gsap.killTweensOf(sweepRef.current);
+    if (logoWrapRef.current) gsap.killTweensOf(logoWrapRef.current);
+    if (ringSweepRef.current) gsap.killTweensOf(ringSweepRef.current);
+  };
 
   const finishIntro = () => {
     if (completedRef.current) return;
     completedRef.current = true;
-    onStageChange('none');
-    onComplete();
+    killIntroTweens();
+    callbacksRef.current.onStageChange('none');
+    callbacksRef.current.onComplete();
   };
 
   useEffect(() => {
@@ -59,24 +82,27 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
 
   useEffect(() => {
     if (reducedMotion) {
-      onStageChange('menu_blend');
+      callbacksRef.current.onStageChange('menu_blend');
       const t = window.setTimeout(finishIntro, 900);
-      return () => window.clearTimeout(t);
+      return () => {
+        window.clearTimeout(t);
+        killIntroTweens();
+      };
     }
 
     const timers: number[] = [];
 
     // SCENE 1: Dark Screen + Electric Particles + Light Sweep
     setSceneNum(1);
-    onStageChange('none');
-    onPlaySweep();
+    callbacksRef.current.onStageChange('none');
+    callbacksRef.current.onPlaySweep();
     animateIntroScene1Particles(particlesWrapRef.current, sweepRef.current);
 
     // SCENE 2: Metallic EPIC SWING Logo Reveal
     timers.push(
       window.setTimeout(() => {
         setSceneNum(2);
-        onPlayImpact();
+        callbacksRef.current.onPlayImpact();
         animateIntroScene2Logo(logoWrapRef.current, ringSweepRef.current);
       }, INTRO_TIMINGS_MS.LOGO_REVEAL)
     );
@@ -85,7 +111,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
     timers.push(
       window.setTimeout(() => {
         setSceneNum(3);
-        onStageChange('table_reveal');
+        callbacksRef.current.onStageChange('table_reveal');
       }, INTRO_TIMINGS_MS.TABLE_REVEAL)
     );
 
@@ -94,7 +120,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
       window.setTimeout(() => {
         setSceneNum(4);
         setShowGoalBanner(false);
-        onStageChange('gameplay_rally');
+        callbacksRef.current.onStageChange('gameplay_rally');
       }, INTRO_TIMINGS_MS.GAMEPLAY_RALLY)
     );
 
@@ -109,7 +135,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
     timers.push(
       window.setTimeout(() => {
         setSceneNum(5);
-        onStageChange('menu_blend');
+        callbacksRef.current.onStageChange('menu_blend');
       }, INTRO_TIMINGS_MS.MENU_BLEND)
     );
 
@@ -121,6 +147,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
 
     return () => {
       timers.forEach((id) => window.clearTimeout(id));
+      killIntroTweens();
     };
     // Run intro timeline once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps

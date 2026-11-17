@@ -26,26 +26,32 @@ export function animateResultsCardAndCoins(
   targetCoins: number,
   reducedMotion: boolean,
   onCoinUpdate: (val: number) => void
-): gsap.core.Tween | null {
+): gsap.core.Timeline | null {
   if (!cardEl || reducedMotion) {
     onCoinUpdate(targetCoins);
     return null;
   }
 
-  gsap.fromTo(
+  const tl = gsap.timeline();
+  tl.fromTo(
     cardEl,
     { opacity: 0, scale: 0.92, y: 18 },
     { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: 'back.out(1.4)' }
   );
 
   const counter = { val: 0 };
-  return gsap.to(counter, {
-    val: targetCoins,
-    duration: 0.9,
-    delay: 0.25,
-    ease: 'power2.out',
-    onUpdate: () => onCoinUpdate(Math.round(counter.val)),
-  });
+  tl.to(
+    counter,
+    {
+      val: targetCoins,
+      duration: 0.9,
+      ease: 'power2.out',
+      onUpdate: () => onCoinUpdate(Math.round(counter.val)),
+    },
+    0.25
+  );
+
+  return tl;
 }
 
 export function animateIntroScene1Particles(
@@ -122,7 +128,7 @@ export function animateCoinBurst(
     dots.forEach((dot, idx) => {
       const angle = (idx / dots.length) * Math.PI * 2;
       const dist = 54 + (idx % 3) * 18;
-      gsap.fromTo(
+      tl.fromTo(
         dot,
         { x: 0, y: 0, scale: 0.4, opacity: 1 },
         {
@@ -132,7 +138,8 @@ export function animateCoinBurst(
           opacity: 0,
           duration: 0.72,
           ease: 'power2.out',
-        }
+        },
+        0
       );
     });
   }

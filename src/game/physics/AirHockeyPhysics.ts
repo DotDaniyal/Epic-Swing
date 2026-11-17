@@ -157,11 +157,12 @@ export class AirHockeyPhysics {
   }
 
   public launchPracticePuck(speedMultiplier: number): void {
-    this.speedScale = speedMultiplier;
+    const clampedScale = Math.max(0.5, Math.min(2.0, Number.isFinite(speedMultiplier) ? speedMultiplier : 1.0));
+    this.speedScale = clampedScale;
     this.puck.x = (Math.random() - 0.5) * 0.16;
     this.puck.z = -0.35;
     const angle = (Math.random() - 0.5) * 0.9;
-    const baseSpeed = 2.6 * speedMultiplier;
+    const baseSpeed = 2.6 * clampedScale;
     this.puck.vx = Math.sin(angle) * baseSpeed;
     this.puck.vz = Math.cos(angle) * baseSpeed;
     this.goalTriggered = false;
@@ -245,6 +246,7 @@ export class AirHockeyPhysics {
     this.resolveTableCollisions();
     this.resolvePaddleCollision(this.p1, 1);
     this.resolvePaddleCollision(this.p2, 2);
+    this.resolveTableCollisions();
 
     const maxSpd =
       MAX_PUCK_SPEED * Math.max(0.75, Math.min(1.5, this.speedScale));

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -39,6 +39,10 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
   const [customMinutes, setCustomMinutes] = useState(
     String(config.customDurationMinutes || 4)
   );
+
+  useEffect(() => {
+    setCustomMinutes(String(config.customDurationMinutes || 4));
+  }, [config.customDurationMinutes]);
 
   const isCustomSelected = !PRESET_DURATIONS.some(
     (p) => p.seconds === config.durationSeconds
@@ -318,6 +322,7 @@ export const MatchSetupWizard: React.FC<MatchSetupWizardProps> = ({
                   max={30}
                   step={0.5}
                   value={customMinutes}
+                  onFocus={() => applyCustomDuration(customMinutes)}
                   onChange={(e) => applyCustomDuration(e.target.value)}
                   className="w-14 bg-transparent text-right font-mono-tabular text-sm font-bold text-white focus:outline-none"
                 />

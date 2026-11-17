@@ -138,7 +138,7 @@ export class MultiTouchInputController {
     if (!pos) return;
 
     if (this.mode === 'two_player') {
-      const wantsP1 = pos.z >= 0 || pos.screenHalf === 'bottom';
+      const wantsP1 = pos.z >= 0;
       if (wantsP1) {
         if (this.p1PointerId === null) {
           this.p1PointerId = e.pointerId;
@@ -194,7 +194,26 @@ export class MultiTouchInputController {
   };
 
   private handleKeyDown = (e: KeyboardEvent): void => {
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
     this.onFirstGesture?.();
+    if (
+      this.active &&
+      (e.code === 'ArrowUp' ||
+        e.code === 'ArrowDown' ||
+        e.code === 'ArrowLeft' ||
+        e.code === 'ArrowRight' ||
+        e.code === 'Space')
+    ) {
+      e.preventDefault();
+    }
     this.heldKeys.add(e.code);
   };
 

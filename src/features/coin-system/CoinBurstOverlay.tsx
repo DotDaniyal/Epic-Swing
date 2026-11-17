@@ -21,23 +21,25 @@ export const CoinBurstOverlay: React.FC<CoinBurstOverlayProps> = ({
 }) => {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const particlesRef = useRef<HTMLDivElement | null>(null);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
 
   useEffect(() => {
     if (!visible || !wrapRef.current) return;
 
     if (reducedMotion) {
-      const t = window.setTimeout(() => onDone?.(), 1400);
+      const t = window.setTimeout(() => onDoneRef.current?.(), 1400);
       return () => window.clearTimeout(t);
     }
 
     const tl = animateCoinBurst(wrapRef.current, particlesRef.current, () => {
-      onDone?.();
+      onDoneRef.current?.();
     });
 
     return () => {
       tl.kill();
     };
-  }, [visible, reducedMotion, onDone]);
+  }, [visible, reducedMotion]);
 
   if (!visible) return null;
 

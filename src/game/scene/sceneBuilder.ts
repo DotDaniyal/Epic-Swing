@@ -645,6 +645,9 @@ export function buildArenaScene(
         } else {
           mesh.material?.dispose();
         }
+        if ((obj as THREE.InstancedMesh).isInstancedMesh) {
+          (obj as THREE.InstancedMesh).dispose?.();
+        }
       }
     });
   };

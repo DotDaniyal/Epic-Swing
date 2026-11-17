@@ -263,6 +263,8 @@ export default function App() {
     const fresh = resetAllProgressData();
     setSaveData(fresh);
     saveDataRef.current = fresh;
+    setPracticeSparring(false);
+    engineRef.current?.setPracticeSparring(false);
     engineRef.current?.applyPreferences(fresh.preferences);
     engineRef.current?.updateConfig(fresh.matchConfig);
     engineRef.current?.applyCosmetics(fresh.profiles.p1, fresh.profiles.p2);
@@ -299,12 +301,18 @@ export default function App() {
           targetConfig.player2Name.trim() || curProfiles.p2.name || 'Player 2',
       };
       setLastMatchReward(null);
+      if (normalized.mode !== 'practice') {
+        setPracticeSparring(false);
+        engineRef.current?.setPracticeSparring(false);
+      } else {
+        engineRef.current?.setPracticeSparring(practiceSparring);
+      }
       updateConfig(normalized);
       setScreen('playing');
       engineRef.current?.applyCosmetics(curProfiles.p1, curProfiles.p2);
       engineRef.current?.startMatch(normalized);
     },
-    [updateConfig]
+    [practiceSparring, updateConfig]
   );
 
   const handleStartQuickMatch = useCallback(
@@ -331,6 +339,17 @@ export default function App() {
     engineRef.current?.enterIdleMenu();
     setScreen('menu');
   }, []);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden && screen === 'playing') {
+        handlePause();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () =>
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [screen, handlePause]);
 
   const handleMatchFinished = useCallback((finalHud: LiveMatchHUDState) => {
     setHud(finalHud);

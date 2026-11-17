@@ -33,7 +33,8 @@ export function getDefaultReducedMotion(): boolean {
 
 export const DEFAULT_MATCH_CONFIG: MatchConfig = {
   mode: 'vs_ai',
-  difficulty: 'medium',
+  difficulty: 'easy',
+  gameplaySpeed: 'normal',
   durationSeconds: 180,
   customDurationMinutes: 4,
   player1Name: 'Player 1',
@@ -53,6 +54,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   mirrorTopScoreOnMobile: true,
   introPreference: 'auto',
   hasSeenIntro: false,
+  touchSensitivity: 1.0,
 };
 
 export const DEFAULT_STATISTICS: PlayerStatistics = {
@@ -254,17 +256,34 @@ export function validateParsedSaveData(
   const p1 = sanitizeProfile(parsed.profiles?.p1, 'p1');
   const p2 = sanitizeProfile(parsed.profiles?.p2, 'p2');
 
+  const rawSpeed = parsed.matchConfig?.gameplaySpeed;
+  const validSpeed =
+    rawSpeed === 'slow' || rawSpeed === 'normal' || rawSpeed === 'fast'
+      ? rawSpeed
+      : DEFAULT_MATCH_CONFIG.gameplaySpeed;
+
   const matchConfig: MatchConfig = {
     ...DEFAULT_MATCH_CONFIG,
     ...(parsed.matchConfig || {}),
+    gameplaySpeed: validSpeed,
     player1Name: p1.name,
     player2Name: p2.name,
   };
 
+  const rawSens = parsed.preferences?.touchSensitivity;
+  const clampedSens =
+    typeof rawSens === 'number' && Number.isFinite(rawSens)
+      ? Math.max(0.75, Math.min(1.35, rawSens))
+      : DEFAULT_PREFERENCES.touchSensitivity;
+
   return {
     version: CURRENT_SAVE_VERSION,
     matchConfig,
-    preferences: { ...DEFAULT_PREFERENCES, ...(parsed.preferences || {}) },
+    preferences: {
+      ...DEFAULT_PREFERENCES,
+      ...(parsed.preferences || {}),
+      touchSensitivity: clampedSens,
+    },
     statistics: {
       ...DEFAULT_STATISTICS,
       ...(parsed.statistics || {}),
